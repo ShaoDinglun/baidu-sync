@@ -50,3 +50,8 @@ build/
 *.tmp
 *.temp
 .cache/
+
+# Claude / OMC 本地状态
+.omc/
+.claude/worktrees/
+127.0.0.1/

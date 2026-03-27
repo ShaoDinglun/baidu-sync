@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"git reset HEAD -- \\\".claude/worktrees\\\" && git add -- \\\".serena/project.yml\\\" \\\"__pycache__/scheduler.cpython-310.pyc\\\" \\\"__pycache__/storage.cpython-310.pyc\\\" \\\"frontend-old/README.md\\\" \\...",
-  "error": "Exit code 128\nUnstaged changes after reset:\nM\t.omc/state/hud-stdin-cache.json\nM\t.omc/state/last-tool-error.json\nfatal: pathspec 'frontend-old/README.md' did not match any files",
-  "timestamp": "2026-03-27T03:12:34.255Z",
-  "retry_count": 2
-}
