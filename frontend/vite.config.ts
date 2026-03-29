@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
@@ -5,6 +6,11 @@ import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
+const packageJson = JSON.parse(
+  readFileSync(resolve(__dirname, 'package.json'), 'utf-8'),
+) as { version: string }
+const appVersion = `v${packageJson.version}`
+const buildTime = new Date().toISOString()
 const backendTarget = process.env.VITE_BACKEND_TARGET || 'http://localhost:5000'
 const forwardedProto = (() => {
   try {
@@ -43,6 +49,10 @@ const createProxyConfig = (withBypass = false) => ({
 
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __BUILD_TIME__: JSON.stringify(buildTime),
+  },
   plugins: [
     vue(),
     AutoImport({

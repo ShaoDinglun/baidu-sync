@@ -1,11 +1,12 @@
 // 版本管理配置
 export const VERSION_CONFIG = {
-  APP_VERSION: 'v1.1.3',
-  BUILD_TIME: '2024-09-15T20:00:00Z',
-  RELEASE_NOTES: '前端重构版本 - Vue 3 + TypeScript',
+  APP_VERSION: __APP_VERSION__,
+  BUILD_TIME: __BUILD_TIME__,
+  RELEASE_NOTES: '版本号改为从 package.json 自动注入',
   UPDATE_NOTES: {
+    'v1.1.5': '版本号改为从 package.json 自动注入',
     'v1.1.3': '前端重构版本 - Vue 3 + TypeScript',
-    'v1.1.2': '优化轮询机制', 
+    'v1.1.2': '优化轮询机制',
     'v1.1.1': '优化界面响应速度'
   }
 } as const
