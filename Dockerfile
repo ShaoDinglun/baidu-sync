@@ -55,8 +55,8 @@ COPY --from=frontend-builder /app/frontend/dist/ ./static/
 COPY config/config.template.json ./template/config.template.json
 COPY config/bypy_sync.example.json ./template/bypy_sync.example.json
 
-RUN mkdir -p config log template && \
-    chmod -R 777 config log template
+RUN mkdir -p config log template data && \
+    chmod -R 777 config log template data
 
 RUN echo '#!/bin/sh\n\
 # 等待卷挂载完成\n\

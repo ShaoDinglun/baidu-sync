@@ -1,8 +1,9 @@
-version: '3'
-
 services:
   baidu-autosave:
-    image: kokojacket/baidu-autosave:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: baidu-autosave:local
     container_name: baidu-autosave
     restart: unless-stopped
     ports:
@@ -10,5 +11,7 @@ services:
     volumes:
       - ./config:/app/config
       - ./log:/app/log
+      - ./data:/app/data
     environment:
-      - TZ=Asia/Shanghai 
+      - TZ=Asia/Shanghai
+      - BAIDU_AUTOSAVE_DEFAULT_PASSWORD=change-this-password

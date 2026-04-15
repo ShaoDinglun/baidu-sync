@@ -242,7 +242,7 @@
         </el-form-item>
 
         <el-form-item label="本地保存目录">
-          <el-input v-model="localSyncTaskForm.local_root" placeholder="例如：/data/baidu/A股数据_分笔数据" />
+          <el-input v-model="localSyncTaskForm.local_root" placeholder="例如：/app/data/example-task（Docker）或 /data/example-task" />
         </el-form-item>
 
         <el-form-item label="任务启用状态">

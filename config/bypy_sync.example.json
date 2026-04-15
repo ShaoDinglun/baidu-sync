@@ -1,7 +1,7 @@
 {
   "bypy": {
     "binary": "bypy",
-    "config_dir": "/home/leon/.bypy",
+    "config_dir": "/app/config/.bypy",
     "retry_times": 3,
     "retry_delay_seconds": 5,
     "retry_backoff": 2,
@@ -18,42 +18,42 @@
   },
   "tasks": [
     {
-      "task_id": "a-share-ticks",
-      "name": "A股数据全量拉取",
+      "task_id": "example-recent-task",
+      "name": "示例任务：最近两个月同步",
       "enabled": true,
       "auto_run_enabled": true,
       "cron": "15 * * * *",
-      "remote_root": "/A股数据_分笔数据",
-      "local_root": "/data/bypy/A股数据_分笔数据",
+      "remote_root": "/示例目录",
+      "local_root": "/app/data/example-recent-task",
       "sync_mode": "recent_months",
       "recent_value": 2,
       "overwrite_policy": "if_newer",
       "directory_filters": []
     },
     {
-      "task_id": "a-share-manual",
-      "name": "A股数据手动目录同步",
+      "task_id": "example-manual-task",
+      "name": "示例任务：手动指定子目录",
       "enabled": true,
       "auto_run_enabled": false,
       "cron": "",
-      "remote_root": "/A股数据_分笔数据",
-      "local_root": "/data/bypy/A股数据_分笔数据",
+      "remote_root": "/示例目录",
+      "local_root": "/app/data/example-manual-task",
       "sync_mode": "manual",
       "recent_value": 0,
       "overwrite_policy": "if_newer",
       "directory_filters": [
-        "2026/04",
-        "2026/03"
+        "分类A/2026-04",
+        "分类B"
       ]
     },
     {
-      "task_id": "fund-ticks",
-      "name": "基金数据全量拉取",
+      "task_id": "example-full-task",
+      "name": "示例任务：全量同步",
       "enabled": false,
       "auto_run_enabled": false,
       "cron": "0 2 * * *",
-      "remote_root": "/基金_分笔成交",
-      "local_root": "/data/bypy/基金_分笔成交",
+      "remote_root": "/另一份示例目录",
+      "local_root": "/app/data/example-full-task",
       "sync_mode": "all",
       "recent_value": 0,
       "overwrite_policy": "if_newer",
