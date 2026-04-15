@@ -2,13 +2,8 @@
 export const VERSION_CONFIG = {
   APP_VERSION: __APP_VERSION__,
   BUILD_TIME: __BUILD_TIME__,
-  RELEASE_NOTES: '版本号改为从 package.json 自动注入',
-  UPDATE_NOTES: {
-    'v1.1.5': '版本号改为从 package.json 自动注入',
-    'v1.1.3': '前端重构版本 - Vue 3 + TypeScript',
-    'v1.1.2': '优化轮询机制',
-    'v1.1.1': '优化界面响应速度'
-  }
+  RELEASE_NOTES: '当前维护重点是打通订阅链接、百度网盘与本地同步的全链路。',
+  UPDATE_NOTES: {}
 } as const
 
 export const APP_VERSION = VERSION_CONFIG.APP_VERSION

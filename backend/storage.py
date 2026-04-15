@@ -106,6 +106,42 @@ class BaiduStorage:
         self._user_info_cache_time = 0
         self._cache_ttl = 30  # 缓存有效期（秒）
 
+    def _build_initial_admin_password(self):
+        configured_password = (os.getenv('BAIDU_AUTOSAVE_DEFAULT_PASSWORD') or '').strip()
+        if configured_password:
+            return configured_password, True
+
+        return uuid.uuid4().hex[:16], False
+
+    def _ensure_auth_config(self, config):
+        auth_changed = False
+        auth_config = config.get('auth')
+
+        if not isinstance(auth_config, dict):
+            auth_config = {}
+            config['auth'] = auth_config
+            auth_changed = True
+
+        if not auth_config.get('users'):
+            auth_config['users'] = 'admin'
+            auth_changed = True
+
+        if not auth_config.get('password'):
+            password, from_env = self._build_initial_admin_password()
+            auth_config['password'] = password
+            auth_changed = True
+
+            if from_env:
+                logger.warning("检测到未配置后台登录密码，已使用环境变量 BAIDU_AUTOSAVE_DEFAULT_PASSWORD 初始化管理员密码")
+            else:
+                logger.warning(f"检测到未配置后台登录密码，已生成随机初始密码。用户名: {auth_config['users']} 密码: {password}")
+
+        if 'session_timeout' not in auth_config:
+            auth_config['session_timeout'] = 3600
+            auth_changed = True
+
+        return auth_changed
+
     def _extract_entry_mtime(self, entry):
         """提取分享条目的修改时间，兼容对象和字典结构。"""
         candidate_keys = ('server_mtime', 'local_mtime', 'mtime', 'server_ctime', 'ctime')
@@ -680,6 +716,7 @@ class BaiduStorage:
         
     def _load_config(self):
         try:
+            config_changed = False
             # 检查配置文件是否存在且不为空
             if not APP_CONFIG_PATH.exists() or APP_CONFIG_PATH.stat().st_size == 0:
                 logger.warning("配置文件不存在或为空，将从模板创建")
@@ -690,33 +727,37 @@ class BaiduStorage:
                 # 确保配置文件结构完整
                 if 'baidu' not in config:
                     config['baidu'] = {}
+                    config_changed = True
                 if 'users' not in config['baidu']:
                     config['baidu']['users'] = {}
+                    config_changed = True
                 if 'current_user' not in config['baidu']:
                     config['baidu']['current_user'] = None
+                    config_changed = True
                 if 'tasks' not in config['baidu']:
                     config['baidu']['tasks'] = []
+                    config_changed = True
                 if 'cron' not in config:
                     config['cron'] = {
                         'default_schedule': '*/5 * * * *',
                         'auto_install': True
                     }
-                # 添加 auth 配置结构
-                if 'auth' not in config:
-                    config['auth'] = {
-                        'users': 'admin',
-                        'password': 'admin123',
-                        'session_timeout': 3600
-                    }
+                    config_changed = True
+
+                if self._ensure_auth_config(config):
+                    config_changed = True
 
                 if self._migrate_subscription_tasks_in_config(config):
+                    config_changed = True
+                    logger.info("已将旧订阅任务配置迁移为新的同步策略字段")
+
+                if config_changed:
                     with APP_CONFIG_PATH.open('w', encoding='utf-8') as wf:
                         json.dump(config, wf, ensure_ascii=False, indent=4)
-                    logger.info("已将旧订阅任务配置迁移为新的同步策略字段")
 
                 return config
         except FileNotFoundError:
-            return {
+            config = {
                 'baidu': {
                     'users': {},
                     'current_user': None,
@@ -728,10 +769,12 @@ class BaiduStorage:
                 },
                 'auth': {
                     'users': 'admin',
-                    'password': 'admin123',
+                    'password': '',
                     'session_timeout': 3600
                 }
             }
+            self._ensure_auth_config(config)
+            return config
         except Exception as e:
             logger.error(f"加载配置文件失败: {str(e)}")
             raise
