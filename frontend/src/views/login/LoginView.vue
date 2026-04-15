@@ -2,7 +2,7 @@
   <div class="login-container">
     <div class="login-card">
       <div class="login-header">
-        <h1 class="login-title">百度网盘自动转存工具</h1>
+        <h1 class="login-title">百度同步</h1>
         <p class="login-subtitle">请登录您的账户</p>
       </div>
 

@@ -1,4 +1,4 @@
-# 百度网盘自动转存工具 - 前端
+# 百度同步 - 前端
 
 基于 Vue 3 + TypeScript + Element Plus 的前端管理中台。
 
@@ -23,7 +23,7 @@ npm install
 #### 1. 启动后端
 
 ```bash
-cd /path/to/baidu-autosave
+cd /path/to/baidu-sync
 python -m backend.web_app
 ```
 
@@ -32,7 +32,7 @@ python -m backend.web_app
 #### 2. 启动前端
 
 ```bash
-cd /path/to/baidu-autosave/frontend
+cd /path/to/baidu-sync/frontend
 npm run dev
 ```
 

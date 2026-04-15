@@ -1,10 +1,10 @@
 services:
-  baidu-autosave:
+  baidu-sync:
     build:
       context: .
       dockerfile: Dockerfile
-    image: baidu-autosave:local
-    container_name: baidu-autosave
+    image: baidu-sync:local
+    container_name: baidu-sync
     restart: unless-stopped
     ports:
       - "5000:5000"

@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 > nul
 
-echo === 百度网盘自动转存工具前端启动 ===
+echo === 百度同步前端启动 ===
 echo.
 
 REM 检查Node.js

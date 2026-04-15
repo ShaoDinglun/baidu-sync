@@ -36,4 +36,4 @@ app.config.warnHandler = (msg, _vm, trace) => {
 // 挂载应用
 app.mount('#app')
 
-console.log('百度网盘自动转存工具前端已启动')
+console.log('百度同步前端已启动')

@@ -9,7 +9,7 @@ export class Storage {
   private defaultExpiry: number
 
   constructor(options: StorageOptions = {}) {
-    this.prefix = options.prefix || 'baidu-autosave-'
+    this.prefix = options.prefix || 'baidu-sync-'
     this.defaultExpiry = options.expiry || 24 * 60 * 60 * 1000 // 24小时
   }
 
@@ -132,6 +132,6 @@ export const storage = {
 
 // 默认实例
 export const appStorage = new Storage({
-  prefix: 'baidu-autosave-v2-',
+  prefix: 'baidu-sync-v2-',
   expiry: 7 * 24 * 60 * 60 * 1000 // 7天
 })

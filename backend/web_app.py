@@ -32,11 +32,11 @@ from backend.bypy_sync.full_sync import ensure_default_config, run_full_sync
 from backend.bypy_sync.incremental_sync import run_incremental_sync
 
 # GitHub 仓库信息
-GITHUB_REPO = 'kokojacket/baidu-autosave'
+GITHUB_REPO = 'ShaoDinglun/baidu-sync'
 # Docker Hub 信息
-DOCKER_HUB_RSS = 'https://rsshub.rssforever.com/dockerhub/tag/kokojacket/baidu-autosave'
+DOCKER_HUB_RSS = 'https://rsshub.rssforever.com/dockerhub/tag/shaodinglun/baidu-sync'
 # 备用 Docker Hub RSS 源
-DOCKER_HUB_RSS_ALT = 'https://rss.kuaisouxia.com/dockerhub/tag/kokojacket/baidu-autosave'
+DOCKER_HUB_RSS_ALT = 'https://rss.kuaisouxia.com/dockerhub/tag/shaodinglun/baidu-sync'
 # 1ms.run API 源
 MS_RUN_API = 'https://1ms.run/api/v1/registry/get_tags'
 
@@ -3175,7 +3175,7 @@ def check_version():
             # 使用 1ms.run API 获取版本信息
             try:
                 params = {
-                    "repositories": "kokojacket/baidu-autosave",
+                    "repositories": "shaodinglun/baidu-sync",
                     "page": 1,
                     "page_size": 10,
                     "search": ""
@@ -3213,7 +3213,7 @@ def check_version():
                         version_tags.sort(key=lambda x: x.get('tag_last_pushed', ''), reverse=True)
                         latest_version = version_tags[0]['tag_name']
                         published = version_tags[0].get('tag_last_pushed')
-                        link = f"https://hub.docker.com/layers/kokojacket/baidu-autosave/{latest_version}/images/{version_tags[0].get('digest', '').split(':')[-1]}"
+                        link = f"https://hub.docker.com/layers/shaodinglun/baidu-sync/{latest_version}/images/{version_tags[0].get('digest', '').split(':')[-1]}"
                         
                         logger.info(f"从1ms.run API获取到最新版本: {latest_version}")
                         return jsonify({

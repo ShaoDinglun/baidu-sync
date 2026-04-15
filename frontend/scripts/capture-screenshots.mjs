@@ -56,7 +56,7 @@ async function main() {
 
   try {
     await page.goto(new URL('/login', baseUrl).toString(), { waitUntil: 'domcontentloaded' })
-    await page.getByRole('heading', { name: '百度网盘自动转存工具' }).waitFor({ timeout: 15000 })
+    await page.getByRole('heading', { name: '百度同步' }).waitFor({ timeout: 15000 })
     await page.screenshot({
       path: path.join(outputDir, 'login.png'),
       fullPage: true,

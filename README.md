@@ -1,6 +1,8 @@
-# 百度网盘自动转存
+# 百度同步
 
 > **当前维护声明**：本仓库基于原作者项目继续扩展和维护，当前重点是稳定打通“订阅链接 -> 百度网盘应用目录 -> 本地目录”的全链路。项目会持续迭代，也欢迎更多人一起提交 Issue 和 PR，协助维护、排查问题和补齐文档。
+>
+> **致谢与来源**：本项目基于 kokojacket 的原项目继续演进，原项目地址：<https://github.com/kokojacket/baidu-autosave>。感谢原作者提供的基础能力与开源贡献。
 
 这是一个围绕百度网盘构建的数据同步项目，在原有自动转存能力的基础上，补齐了订阅更新、本地同步和前端管理中台之间的链路。现在可以把分享或订阅内容先同步到百度网盘，再按策略同步到本地目录，并在统一界面里管理用户、任务、通知和运行状态。
 
@@ -98,8 +100,8 @@ npm run screenshots
 
 1. 克隆仓库：
 ```bash
-git clone https://github.com/your-username/baidu-autosave.git
-cd baidu-autosave
+git clone https://github.com/ShaoDinglun/baidu-sync.git
+cd baidu-sync
 ```
 
 2. 安装依赖：
@@ -125,11 +127,11 @@ python -m backend.web_app
 
 ```bash
 # 终端 1：项目根目录启动后端
-cd /path/to/baidu-autosave
+cd /path/to/baidu-sync
 python -m backend.web_app
 
 # 终端 2：frontend 目录启动前端
-cd /path/to/baidu-autosave/frontend
+cd /path/to/baidu-sync/frontend
 npm install
 npm run dev
 ```
@@ -399,10 +401,10 @@ cron 示例：
 
 ```bash
 # 每天凌晨 1:15 执行一次增量同步
-15 1 * * * cd /path/to/baidu-autosave && /path/to/baidu-autosave/.venv/bin/python -m backend.bypy_sync.incremental_sync --config config/bypy_sync.json >> /path/to/baidu-autosave/log/bypy_sync/cron_incremental.log 2>&1
+15 1 * * * cd /path/to/baidu-sync && /path/to/baidu-sync/.venv/bin/python -m backend.bypy_sync.incremental_sync --config config/bypy_sync.json >> /path/to/baidu-sync/log/bypy_sync/cron_incremental.log 2>&1
 
 # 每 30 分钟执行一个指定任务的增量同步
-*/30 * * * * cd /path/to/baidu-autosave && /path/to/baidu-autosave/.venv/bin/python -m backend.bypy_sync.incremental_sync --config config/bypy_sync.json --task "示例任务：最近两个月同步" >> /path/to/baidu-autosave/log/bypy_sync/cron_incremental.log 2>&1
+*/30 * * * * cd /path/to/baidu-sync && /path/to/baidu-sync/.venv/bin/python -m backend.bypy_sync.incremental_sync --config config/bypy_sync.json --task "示例任务：最近两个月同步" >> /path/to/baidu-sync/log/bypy_sync/cron_incremental.log 2>&1
 ```
 
 日志与状态文件：
@@ -439,12 +441,12 @@ tail -f "$(ls -t log/bypy_sync/bypy_incremental_sync_*.log | head -n 1)"
 1. 创建 `docker-compose.yml` 文件：
 ```yaml
 services:
-  baidu-autosave:
+  baidu-sync:
     build:
       context: .
       dockerfile: Dockerfile
-    image: baidu-autosave:local
-    container_name: baidu-autosave
+    image: baidu-sync:local
+    container_name: baidu-sync
     restart: unless-stopped
     ports:
       - "5000:5000"
@@ -492,13 +494,13 @@ mkdir -p config log data
 
 2. 构建镜像：
 ```bash
-docker build -t baidu-autosave:local .
+docker build -t baidu-sync:local .
 ```
 
 3. 启动容器：
 ```bash
 docker run -d \
-  --name baidu-autosave \
+  --name baidu-sync \
   --restart unless-stopped \
   -p 5000:5000 \
   -v $(pwd)/config:/app/config \
@@ -506,12 +508,12 @@ docker run -d \
   -v $(pwd)/data:/app/data \
   -e TZ=Asia/Shanghai \
   -e BAIDU_AUTOSAVE_DEFAULT_PASSWORD=change-this-password \
-  baidu-autosave:local
+  baidu-sync:local
 ```
 
 4. 查看日志：
 ```bash
-docker logs -f baidu-autosave
+docker logs -f baidu-sync
 ```
 
 5. 访问Web界面：
@@ -525,7 +527,7 @@ http://localhost:5000
 ### 目录结构说明
 
 ```
-baidu-autosave/
+baidu-sync/
 ├── config/                       # 配置文件目录
 │   ├── config.json              # 运行时配置文件（自动生成）
 │   ├── config.template.json     # 主配置模板

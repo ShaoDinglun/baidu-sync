@@ -2,7 +2,7 @@
   <div class="dashboard">
     <div class="page-header">
       <h1 class="page-title">仪表盘</h1>
-      <p class="page-subtitle">欢迎使用百度网盘自动转存工具</p>
+      <p class="page-subtitle">欢迎使用百度同步</p>
     </div>
 
     <div class="dashboard-content">
