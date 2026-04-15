@@ -290,11 +290,11 @@ lsof -ti:3001 | xargs kill -9
 
 ### 本地同步配置与运行
 
-本地同步统一使用配置文件 `config/bypy_sync.json`。
+本地同步统一使用运行时配置文件 `config/bypy_sync.json`。
 
-如果使用 Docker，容器首次启动时也会自动用 `config/bypy_sync.example.json` 初始化 `config/bypy_sync.json`。
+如果该文件不存在，Web 端本地同步入口和命令行工具都会自动用 `config/bypy_sync.example.json` 初始化它。因此仓库里只需要保留示例文件，本机环境保留生成后的运行时文件即可。
 
-配置示例：
+默认模板示例：
 
 ```json
 {
@@ -477,6 +477,8 @@ http://localhost:5000
 > 如果 `config/config.json` 中未配置 `auth.password`，首次启动会自动生成随机初始密码并写入配置文件，同时输出到启动日志。  
 > 如需固定初始密码，可通过环境变量 `BAIDU_AUTOSAVE_DEFAULT_PASSWORD` 显式指定。
 
+> 如果 `config/bypy_sync.json` 不存在，首次进入本地同步页面或首次执行 bypy CLI 时，会自动从 `config/bypy_sync.example.json` 复制生成本地运行时配置。
+
 ### 使用 Docker CLI 部署
 
 1. 创建必要目录：
@@ -517,7 +519,8 @@ baidu-autosave/
 ├── config/                       # 配置文件目录
 │   ├── config.json              # 运行时配置文件（自动生成）
 │   ├── config.template.json     # 主配置模板
-│   └── bypy_sync.json           # bypy 本地同步任务配置
+│   ├── bypy_sync.example.json   # bypy 本地同步任务示例模板
+│   └── bypy_sync.json           # bypy 运行时配置文件（自动生成，本地保留）
 ├── backend/                      # Flask 后端源码包
 │   ├── web_app.py               # Flask Web API 入口
 │   ├── storage.py               # 百度网盘转存与同步核心逻辑

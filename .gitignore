@@ -20,7 +20,9 @@ pip-wheel-metadata/
 
 # 配置文件
 /config/config.json
-config/config*.json
+/config/bypy_sync.json
+!/config/config.template.json
+!/config/bypy_sync.example.json
 git-config
 .env
 .env.*

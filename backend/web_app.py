@@ -24,10 +24,11 @@ import threading
 import queue
 import pytz
 from collections import deque
+from pathlib import Path
 from uuid import uuid4
 
 from gevent.pywsgi import WSGIServer
-from backend.bypy_sync.full_sync import run_full_sync
+from backend.bypy_sync.full_sync import ensure_default_config, run_full_sync
 from backend.bypy_sync.incremental_sync import run_incremental_sync
 
 # GitHub 仓库信息
@@ -685,7 +686,12 @@ def _normalize_local_sync_cron(cron_value):
     return ' '.join(str(cron_value or '').strip().split())
 
 
+def _ensure_bypy_sync_config_file():
+    ensure_default_config(Path(BYPY_SYNC_CONFIG_PATH))
+
+
 def _load_bypy_sync_config():
+    _ensure_bypy_sync_config_file()
     config_data = _load_json_file(BYPY_SYNC_CONFIG_PATH, default={})
     if not isinstance(config_data, dict):
         config_data = {}

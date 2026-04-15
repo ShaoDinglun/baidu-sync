@@ -9,6 +9,7 @@ import posixpath
 import queue
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -26,6 +27,7 @@ from backend.utils import generate_local_sync_full_notification, send_configured
 
 
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "bypy_sync.json"
+DEFAULT_CONFIG_TEMPLATE_PATH = PROJECT_ROOT / "config" / "bypy_sync.example.json"
 DEFAULT_LOG_DIR = PROJECT_ROOT / "log" / "bypy_sync"
 LIST_FORMAT = "$t|$f|$s|$m"
 APP_ROOT_PREFIX = "/apps/bypy"
@@ -61,6 +63,23 @@ class BypyCommandError(BypySyncError):
         self.stderr = stderr
         message = f"bypy 命令失败，退出码={returncode}: {' '.join(command)}"
         super().__init__(message)
+
+
+def ensure_default_config(config_path: Path) -> Path:
+    target = Path(config_path)
+    if target.exists():
+        return target
+
+    is_default_path = target.resolve(strict=False) == DEFAULT_CONFIG_PATH.resolve(strict=False)
+    if not is_default_path:
+        return target
+
+    if not DEFAULT_CONFIG_TEMPLATE_PATH.exists():
+        raise BypySyncError(f"配置文件不存在: {target}，且模板文件不存在: {DEFAULT_CONFIG_TEMPLATE_PATH}")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(DEFAULT_CONFIG_TEMPLATE_PATH, target)
+    return target
 
 
 @dataclass
@@ -518,6 +537,7 @@ def resolve_task_directory_filters(runner: BypyRunner, logger: logging.Logger, t
 
 
 def load_config(config_path: Path) -> tuple[RuntimeSettings, List[SyncTask]]:
+    config_path = ensure_default_config(config_path)
     if not config_path.exists():
         raise BypySyncError(f"配置文件不存在: {config_path}")
 
