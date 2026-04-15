@@ -43,13 +43,13 @@ if not exist "node_modules" (
 
 echo.
 echo ⚠️  重要提醒：
-echo    请先在项目根目录执行: python web_app.py
+echo    请先在项目根目录执行: python -m backend.web_app
 echo    确保后端服务运行在: http://localhost:5000
 echo    否则前端将无法正常工作！
 echo.
 echo 🚀 启动前端开发服务器...
-echo 📍 前端地址: http://localhost:3000
-echo 🔗 API代理: http://localhost:5000 → http://localhost:3000/api
+echo 📍 前端地址: http://localhost:3001
+echo 🔗 API代理: http://localhost:5000 → http://localhost:3001/api
 echo.
 echo 按 Ctrl+C 停止服务器
 echo.

@@ -5,15 +5,34 @@ __pycache__/
 *.pyd
 .Python
 .python-version
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.ipynb_checkpoints/
+pip-wheel-metadata/
+.eggs/
+*.egg-info/
 
 # 配置文件
 /config/config.json
 config/config*.json
 git-config
+.env
+.env.*
+!.env.example
+!.env.template
+/data/*
+!/data/.gitkeep
 
 # 日志文件
 log/
 *.log
+*.pid
 
 # 系统文件
 .DS_Store
@@ -50,8 +69,17 @@ build/
 *.tmp
 *.temp
 .cache/
+baidunetdisk_*.rpm
 
 # Claude / OMC 本地状态
 .omc/
+.claude/
 .claude/worktrees/
 127.0.0.1/
+
+# 本地调试产物
+.playwright-mcp/
+.serena/
+*/__pycache__/
+*/__pycache__/*
+/__pycache__/*

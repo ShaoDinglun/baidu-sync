@@ -1,0 +1,63 @@
+{
+  "bypy": {
+    "binary": "bypy",
+    "config_dir": "/home/leon/.bypy",
+    "retry_times": 3,
+    "retry_delay_seconds": 5,
+    "retry_backoff": 2,
+    "network_timeout": 300,
+    "command_timeout": 0,
+    "command_heartbeat_seconds": 15,
+    "min_command_interval_seconds": 1.0,
+    "processes": 1,
+    "verify_download": false,
+    "log_dir": "log/bypy_sync",
+    "summary_file": "log/bypy_sync/last_run.json",
+    "lock_file": "log/bypy_sync/bypy_full_sync.lock",
+    "state_file": "log/bypy_sync/current_state.json"
+  },
+  "tasks": [
+    {
+      "task_id": "a-share-ticks",
+      "name": "A股数据全量拉取",
+      "enabled": true,
+      "auto_run_enabled": true,
+      "cron": "15 * * * *",
+      "remote_root": "/A股数据_分笔数据",
+      "local_root": "/data/bypy/A股数据_分笔数据",
+      "sync_mode": "recent_months",
+      "recent_value": 2,
+      "overwrite_policy": "if_newer",
+      "directory_filters": []
+    },
+    {
+      "task_id": "a-share-manual",
+      "name": "A股数据手动目录同步",
+      "enabled": true,
+      "auto_run_enabled": false,
+      "cron": "",
+      "remote_root": "/A股数据_分笔数据",
+      "local_root": "/data/bypy/A股数据_分笔数据",
+      "sync_mode": "manual",
+      "recent_value": 0,
+      "overwrite_policy": "if_newer",
+      "directory_filters": [
+        "2026/04",
+        "2026/03"
+      ]
+    },
+    {
+      "task_id": "fund-ticks",
+      "name": "基金数据全量拉取",
+      "enabled": false,
+      "auto_run_enabled": false,
+      "cron": "0 2 * * *",
+      "remote_root": "/基金_分笔成交",
+      "local_root": "/data/bypy/基金_分笔成交",
+      "sync_mode": "all",
+      "recent_value": 0,
+      "overwrite_policy": "if_newer",
+      "directory_filters": []
+    }
+  ]
+}

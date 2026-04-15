@@ -65,6 +65,93 @@
         />
       </el-form-item>
 
+      <el-form-item label="更新方式" prop="sync_mode">
+        <el-radio-group v-model="form.sync_mode">
+          <el-radio label="incremental">增量更新</el-radio>
+          <el-radio label="full">全量同步</el-radio>
+        </el-radio-group>
+        <div class="form-help">
+          这里只控制订阅转存时的对比与覆盖策略，不会切换到本地 bypy 同步流程。增量更新默认只处理新增内容；全量同步会按覆盖策略重新同步目标范围。
+        </div>
+      </el-form-item>
+
+      <el-form-item label="更新时间范围" prop="sync_scope_type">
+        <el-radio-group v-model="form.sync_scope_type">
+          <el-radio label="all">全部内容</el-radio>
+          <el-radio label="recent_months">最近 N 个月</el-radio>
+          <el-radio label="month_range">自定义月份区间</el-radio>
+        </el-radio-group>
+        <div class="form-help">
+          默认按最近 2 个月识别日期目录；如果当前目录结构无法识别出日期目录，会自动回退为该任务范围内的全量处理。
+        </div>
+      </el-form-item>
+
+      <el-form-item v-if="form.sync_scope_type === 'recent_months'" label="最近月数" prop="recent_months">
+        <el-input-number v-model="form.recent_months" :min="1" :max="24" style="width: 220px" />
+      </el-form-item>
+
+      <el-form-item v-if="form.sync_scope_type === 'month_range'" label="月份区间" prop="scope_start_month">
+        <div class="month-range-group">
+          <el-date-picker
+            v-model="form.scope_start_month"
+            type="month"
+            placeholder="开始月份"
+            value-format="YYYY-MM"
+            format="YYYY-MM"
+          />
+          <span class="range-separator">至</span>
+          <el-date-picker
+            v-model="form.scope_end_month"
+            type="month"
+            placeholder="结束月份"
+            value-format="YYYY-MM"
+            format="YYYY-MM"
+          />
+        </div>
+      </el-form-item>
+
+      <el-form-item label="覆盖范围" prop="overwrite_policy">
+        <el-radio-group v-model="form.overwrite_policy">
+          <el-radio label="never">不覆盖已有内容</el-radio>
+          <el-radio label="window_only">仅覆盖时间范围内内容</el-radio>
+          <el-radio label="always">全部允许覆盖</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
+      <el-form-item v-if="form.sync_scope_type !== 'all'" label="目录格式" prop="date_dir_mode">
+        <div class="switch-field">
+          <el-radio-group v-model="form.date_dir_mode">
+            <el-radio label="auto">自动识别</el-radio>
+            <el-radio label="custom">手动指定</el-radio>
+          </el-radio-group>
+          <div class="form-help">
+            自动识别支持 YYYY-MM、YYYY/MM、YYYY年MM月、按月归档/YYYY-MM 等常见结构；如果仍然无法识别，会自动回退为全量处理。
+          </div>
+        </div>
+      </el-form-item>
+
+      <el-form-item v-if="form.sync_scope_type !== 'all' && form.date_dir_mode === 'custom'" label="目录模板" prop="date_dir_patterns">
+        <el-select
+          v-model="form.date_dir_patterns"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择或输入目录模板"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="pattern in dateDirPatternOptions"
+            :key="pattern"
+            :label="pattern"
+            :value="pattern"
+          />
+        </el-select>
+        <div class="form-help">
+          支持直接输入目录模板，例如 YYYY-MM、YYYY/MM、按月归档/YYYY-MM。
+        </div>
+      </el-form-item>
+
       <el-form-item label="定时规则" prop="cron">
             <div class="cron-input-group">
               <el-autocomplete
@@ -87,9 +174,10 @@
               placeholder="如：^(\d+)\.mp4$ 用于匹配需要转存的文件"
               clearable
               value-key="value"
+              :disabled="form.sync_mode === 'full'"
               style="width: 100%"
             />
-            <div class="form-help">正则表达式，用于匹配需要转存的文件，留空表示不过滤</div>
+              <div class="form-help">正则表达式，用于匹配需要转存的文件；全量同步模式下不生效。</div>
           </el-form-item>
 
           <el-form-item label="文件重命名" prop="regex_replace">
@@ -99,9 +187,10 @@
               placeholder="如：第\1集.mp4 用于重命名文件"
               clearable
               value-key="value"
+                :disabled="form.sync_mode === 'full'"
               style="width: 100%"
             />
-            <div class="form-help">正则表达式替换，用于重命名文件，留空表示不重命名</div>
+              <div class="form-help">正则表达式替换，用于重命名文件；全量同步模式下不生效。</div>
           </el-form-item>
     </el-form>
     
@@ -126,7 +215,15 @@ import { ElMessage, type FormInstance } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { useTaskStore } from '@/stores/tasks'
 import { apiService } from '@/services'
-import type { Task } from '@/types'
+import type {
+  CreateTaskRequest,
+  SubscriptionDateDirMode,
+  SubscriptionOverwritePolicy,
+  SubscriptionSyncMode,
+  SubscriptionSyncScopeType,
+  Task,
+  UpdateTaskRequest
+} from '@/types'
 
 // Props
 interface Props {
@@ -156,20 +253,74 @@ const {
   getDefaultSavePath
 } = storeToRefs(taskStore)
 
+const dateDirPatternOptions = [
+  'YYYY-MM',
+  'YYYY-M',
+  'YYYYMM',
+  'YYYY年MM月',
+  'YYYY/MM',
+  '按月归档/YYYY-MM',
+  '按月归档/YYYY年MM月'
+]
+
+interface TaskFormPayload extends CreateTaskRequest {
+  name: string
+  url: string
+  save_dir: string
+  sync_mode: SubscriptionSyncMode
+  sync_scope_type: SubscriptionSyncScopeType
+  recent_months: number
+  scope_start_month: string
+  scope_end_month: string
+  overwrite_policy: SubscriptionOverwritePolicy
+  date_dir_mode: SubscriptionDateDirMode
+  date_dir_patterns: string[]
+  category: string
+  cron: string
+  regex_pattern: string
+  regex_replace: string
+}
+
 // 状态
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const pathNameSync = ref(true) // 路径和名称同步开关
 const isParsingUrl = ref(false) // URL解析状态
 
-const form = reactive({
+const form = reactive<TaskFormPayload>({
   name: '',
   url: '',
   save_dir: '',
+  sync_mode: 'incremental',
+  sync_scope_type: 'recent_months',
+  recent_months: 2,
+  scope_start_month: '',
+  scope_end_month: '',
+  overwrite_policy: 'window_only',
+  date_dir_mode: 'auto',
+  date_dir_patterns: [...dateDirPatternOptions],
   category: '',
   cron: '',
   regex_pattern: '',
   regex_replace: ''
+})
+
+const buildTaskPayload = (): CreateTaskRequest & UpdateTaskRequest => ({
+  name: form.name,
+  url: form.url,
+  save_dir: form.save_dir,
+  sync_mode: form.sync_mode,
+  sync_scope_type: form.sync_scope_type,
+  recent_months: form.recent_months,
+  scope_start_month: form.scope_start_month,
+  scope_end_month: form.scope_end_month,
+  overwrite_policy: form.overwrite_policy,
+  date_dir_mode: form.date_dir_mode,
+  date_dir_patterns: [...form.date_dir_patterns],
+  category: form.category,
+  cron: form.cron,
+  regex_pattern: form.regex_pattern,
+  regex_replace: form.regex_replace
 })
 
 // 高级设置折叠面板状态
@@ -202,6 +353,14 @@ const resetForm = () => {
   form.name = ''
   form.url = ''
   form.save_dir = getDefaultSavePath.value || '' // 使用默认路径，如果为空则用空字符串
+  form.sync_mode = 'incremental'
+  form.sync_scope_type = 'recent_months'
+  form.recent_months = 2
+  form.scope_start_month = ''
+  form.scope_end_month = ''
+  form.overwrite_policy = 'window_only'
+  form.date_dir_mode = 'auto'
+  form.date_dir_patterns = [...dateDirPatternOptions]
   form.category = ''
   form.cron = ''
   form.regex_pattern = ''
@@ -335,6 +494,14 @@ const loadTaskData = (task: Task) => {
   form.url = fullUrl
   
   form.save_dir = task.save_dir
+  form.sync_mode = task.sync_mode || 'incremental'
+  form.sync_scope_type = task.sync_scope_type || 'recent_months'
+  form.recent_months = task.recent_months || 2
+  form.scope_start_month = task.scope_start_month || ''
+  form.scope_end_month = task.scope_end_month || ''
+  form.overwrite_policy = task.overwrite_policy || 'window_only'
+  form.date_dir_mode = task.date_dir_mode || 'auto'
+  form.date_dir_patterns = task.date_dir_patterns?.length ? [...task.date_dir_patterns] : [...dateDirPatternOptions]
   form.category = task.category || ''
   form.cron = task.cron || ''
   form.regex_pattern = task.regex_pattern || ''
@@ -373,14 +540,31 @@ const handleSubmit = async () => {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
+  if (form.sync_scope_type === 'recent_months' && form.recent_months < 1) {
+    ElMessage.warning('最近月数至少为 1')
+    return
+  }
+
+  if (form.sync_scope_type === 'month_range' && (!form.scope_start_month || !form.scope_end_month)) {
+    ElMessage.warning('请选择完整的月份区间')
+    return
+  }
+
+  if (form.sync_scope_type !== 'all' && form.date_dir_mode === 'custom' && form.date_dir_patterns.length === 0) {
+    ElMessage.warning('请至少填写一个目录模板')
+    return
+  }
+
   submitting.value = true
 
   try {
+    const payload = buildTaskPayload()
+
     if (editingTask.value) {
-      await taskStore.updateTask(editingTask.value.order - 1, form)
+      await taskStore.updateTask(editingTask.value.order - 1, payload)
       ElMessage.success('任务已更新')
     } else {
-      await taskStore.addTask(form)
+      await taskStore.addTask(payload)
       ElMessage.success('任务已添加')
     }
 
@@ -478,6 +662,36 @@ watch(pathNameSync, (newValue) => {
     handlePathNameSync()
   }
 })
+
+watch(() => form.sync_mode, (mode) => {
+  if (mode === 'full' && form.overwrite_policy === 'window_only' && form.sync_scope_type === 'all') {
+    form.overwrite_policy = 'always'
+  }
+
+  if (mode === 'full') {
+    form.regex_pattern = ''
+    form.regex_replace = ''
+  }
+})
+
+watch(() => form.sync_scope_type, (scopeType) => {
+  if (scopeType === 'all') {
+    form.date_dir_mode = 'auto'
+    form.scope_start_month = ''
+    form.scope_end_month = ''
+    if (form.sync_mode === 'full' && form.overwrite_policy === 'window_only') {
+      form.overwrite_policy = 'always'
+    }
+  }
+})
+
+watch(() => form.date_dir_mode, (mode) => {
+  if (mode === 'auto') {
+    form.date_dir_patterns = [...dateDirPatternOptions]
+  } else if (form.date_dir_patterns.length === 0) {
+    form.date_dir_patterns = [...dateDirPatternOptions]
+  }
+})
 </script>
 
 <style scoped>
@@ -508,6 +722,13 @@ watch(pathNameSync, (newValue) => {
 .el-form-item :deep(.el-form-item__label) {
   font-weight: 500;
   color: #606266;
+}
+
+.switch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
 }
 
 .el-textarea :deep(.el-textarea__inner) {
@@ -545,6 +766,18 @@ watch(pathNameSync, (newValue) => {
 
 .cron-select {
   flex: 1;
+}
+
+.month-range-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.range-separator {
+  color: #909399;
+  flex-shrink: 0;
 }
 
 .sync-switch {

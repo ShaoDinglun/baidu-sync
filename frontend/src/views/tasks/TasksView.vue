@@ -3,10 +3,37 @@
     <div class="page-header">
       <h1 class="page-title">任务管理</h1>
       <div class="header-actions">
-        <el-button type="primary" @click="addTask">
+        <el-button type="primary" @click="handleCreateTask">
           <el-icon><Plus /></el-icon>
-          添加任务
+          {{ activeTaskType === 'subscription' ? '添加任务' : '新增本地同步任务' }}
         </el-button>
+      </div>
+    </div>
+
+    <div class="task-type-switch">
+      <el-radio-group v-model="activeTaskType" size="large">
+        <el-radio-button label="subscription">订阅同步任务</el-radio-button>
+        <el-radio-button label="local-sync">本地同步任务</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <template v-if="activeTaskType === 'subscription'">
+    <div class="stats-grid">
+      <div class="stats-card">
+        <div class="stats-label">订阅任务总数</div>
+        <div class="stats-value">{{ subscriptionStats.total }}</div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-label">运行中</div>
+        <div class="stats-value">{{ subscriptionStats.running }}</div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-label">异常任务</div>
+        <div class="stats-value">{{ subscriptionStats.error }}</div>
+      </div>
+      <div class="stats-card">
+        <div class="stats-label">定时任务</div>
+        <div class="stats-value">{{ subscriptionStats.cronEnabled }}</div>
       </div>
     </div>
 
@@ -85,10 +112,10 @@
         @selection-change="handleSelectionChange"
         class="desktop-table"
       >
-        <el-table-column type="selection" class-name="col-selection" />
+        <el-table-column type="selection" class-name="col-selection" width="48" />
         
         <!-- 拖拽手柄列 -->
-        <el-table-column label="排序" class-name="col-drag" align="center">
+        <el-table-column label="排序" class-name="col-drag" align="center" width="56">
           <template #default>
             <div
               class="drag-handle"
@@ -100,9 +127,9 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="order" label="序号" class-name="col-order" v-if="columnVisible.order" />
+        <el-table-column prop="order" label="序号" class-name="col-order" v-if="columnVisible.order" width="74" />
         
-        <el-table-column prop="name" label="任务名称" class-name="col-name" v-if="columnVisible.name">
+        <el-table-column prop="name" label="任务名称" class-name="col-name" v-if="columnVisible.name" min-width="210">
           <template #default="{ row }">
             <div class="task-name">
               <a 
@@ -118,7 +145,7 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="分享链接" class-name="col-share" v-if="columnVisible.shareLink">
+        <el-table-column label="分享链接" class-name="col-share" v-if="columnVisible.shareLink" min-width="260">
           <template #default="{ row }">
             <div class="share-link-container">
               <template v-if="row.share_info">
@@ -139,7 +166,7 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="save_dir" label="保存路径" class-name="col-savedir" v-if="columnVisible.saveDir">
+        <el-table-column prop="save_dir" label="保存路径" class-name="col-savedir" v-if="columnVisible.saveDir" min-width="220">
           <template #default="{ row }">
             <div class="save-dir text-truncate" :title="row.save_dir">
               {{ row.save_dir }}
@@ -147,7 +174,7 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="category" label="分类" class-name="col-category" v-if="columnVisible.category">
+        <el-table-column prop="category" label="分类" class-name="col-category" v-if="columnVisible.category" width="110">
           <template #default="{ row }">
             <div class="task-category">
               <el-tag v-if="row.category" size="small" type="primary">
@@ -158,27 +185,14 @@
           </template>
         </el-table-column>
         
-        <!-- 定时规则列 -->
-        <el-table-column label="定时规则" class-name="col-cron" v-if="columnVisible.cron">
+        <el-table-column label="自动运行" class-name="col-cron" v-if="columnVisible.autoRun" min-width="210">
           <template #default="{ row }">
-            <div class="cron-display">
-              <el-tag v-if="row.cron" size="small" type="warning">
-                {{ row.cron }}
-              </el-tag>
-              <span v-else class="text-muted">使用默认</span>
-            </div>
+            <div class="task-name">{{ formatTaskSchedule(row) }}</div>
+            <div class="task-subtitle">{{ formatTaskNextRun(row) }}</div>
           </template>
         </el-table-column>
         
-        <el-table-column prop="message" label="消息" class-name="col-message" v-if="columnVisible.message">
-          <template #default="{ row }">
-            <div class="task-message text-truncate" :title="row.message">
-              {{ row.message || '-' }}
-            </div>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="status" label="状态" class-name="col-status" v-if="columnVisible.status">
+        <el-table-column prop="status" label="状态" class-name="col-status" v-if="columnVisible.status" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
               {{ getStatusText(row.status) }}
@@ -186,7 +200,7 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="操作" class-name="col-actions">
+        <el-table-column label="操作" class-name="col-actions" width="248" align="center">
           <template #default="{ row }">
             <el-button-group size="small">
               <el-button 
@@ -195,6 +209,10 @@
                 :disabled="row.status === 'running'"
               >
                 <el-icon><VideoPlay /></el-icon>
+              </el-button>
+
+              <el-button @click="openTaskLogDialog(row)">
+                <el-icon><Document /></el-icon>
               </el-button>
               
               <el-button @click="editTask(row)">
@@ -259,16 +277,26 @@
                 <span class="value">{{ task.category }}</span>
               </div>
               
-              <div class="content-row" v-if="task.message">
-                <span class="label">消息:</span>
-                <span class="value">{{ task.message }}</span>
+              <div class="content-row">
+                <span class="label">自动运行:</span>
+                <div class="value-group">
+                  <span class="value">{{ formatTaskSchedule(task) }}</span>
+                  <span class="task-subtitle">{{ formatTaskNextRun(task) }}</span>
+                </div>
               </div>
               
               <!-- 高级功能标签 -->
-              <div class="content-row" v-if="task.cron || task.regex_pattern || task.regex_replace">
+              <div class="content-row" v-if="task.regex_pattern || task.regex_replace || getTaskSyncTags(task).length">
                 <span class="label">高级功能:</span>
                 <div class="advanced-tags">
-                  <el-tag v-if="task.cron" size="small" type="warning">定时</el-tag>
+                  <el-tag
+                    v-for="tag in getTaskSyncTags(task)"
+                    :key="`${task.order}-${tag}`"
+                    size="small"
+                    :type="tag === '全量' ? 'danger' : 'warning'"
+                  >
+                    {{ tag }}
+                  </el-tag>
                   <el-tag v-if="task.regex_pattern" size="small" type="info">过滤</el-tag>
                   <el-tag v-if="task.regex_replace" size="small" type="success">重命名</el-tag>
                 </div>
@@ -300,6 +328,14 @@
               :title="task.status === 'running' ? '执行中...' : '执行任务'"
             >
               <el-icon><VideoPlay /></el-icon>
+            </button>
+
+            <button
+              class="action-btn"
+              @click="openTaskLogDialog(task)"
+              title="查看最近日志"
+            >
+              <el-icon><Document /></el-icon>
             </button>
             
             <button 
@@ -347,6 +383,21 @@
       @task-cancelled="handleTaskCancelled"
       @update:modelValue="handleTaskRunnerClose"
     />
+
+    <el-dialog
+      v-model="showTaskLogDialog"
+      :title="taskLogDialogTitle"
+      width="760px"
+    >
+      <div class="dialog-toolbar">
+        <el-button @click="refreshTaskLogs" :loading="taskLogLoading">刷新日志</el-button>
+        <span class="task-page-tip">仅显示该订阅任务最近一次执行日志。</span>
+      </div>
+      <pre class="task-log-panel">{{ taskLogContent || '暂无日志信息' }}</pre>
+      <template #footer>
+        <el-button @click="showTaskLogDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
     
     <!-- 列设置对话框 -->
     <el-dialog
@@ -361,32 +412,39 @@
         <el-checkbox v-model="columnVisible.saveDir">保存路径</el-checkbox>
         <el-checkbox v-model="columnVisible.category">分类</el-checkbox>
         <el-checkbox v-model="columnVisible.status">状态</el-checkbox>
-        <el-checkbox v-model="columnVisible.message">消息</el-checkbox>
-        <el-checkbox v-model="columnVisible.cron">定时规则</el-checkbox>
+        <el-checkbox v-model="columnVisible.autoRun">自动运行</el-checkbox>
       </div>
       <template #footer>
         <el-button @click="showColumnSettings = false">取消</el-button>
         <el-button type="primary" @click="saveColumnSettings">保存</el-button>
       </template>
     </el-dialog>
+    </template>
+
+    <template v-else>
+      <LocalSyncTaskManager ref="localSyncTaskManagerRef" />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { defineAsyncComponent, ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { 
   Plus, Search, VideoPlay, Delete, Edit, Share, 
-  Link, CopyDocument, DCaret, Sort, Setting
+  Link, CopyDocument, DCaret, Sort, Setting, Document
 } from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
 import { useTaskStore } from '@/stores/tasks'
 import { useTasks } from '@/composables/useTasks'
+import { apiService } from '@/services/api'
 import AddTaskDialog from '@/components/business/AddTaskDialog.vue'
 import TaskRunnerDialog from '@/components/business/TaskRunnerDialog.vue'
 import type { Task } from '@/types'
 import { getTaskStatusText } from '@/utils/helpers'
 import Sortable from 'sortablejs'
+
+const LocalSyncTaskManager = defineAsyncComponent(() => import('@/components/business/LocalSyncTaskManager.vue'))
 
 const taskStore = useTaskStore()
 const { tasks, loading } = storeToRefs(taskStore)
@@ -403,6 +461,8 @@ const {
 
 // 表格引用
 const tableRef = ref<TableInstance>()
+const activeTaskType = ref<'subscription' | 'local-sync'>('subscription')
+const localSyncTaskManagerRef = ref<{ openCreateDialog: () => void } | null>(null)
 
 // 搜索和筛选
 const searchQuery = ref('')
@@ -420,11 +480,20 @@ const defaultColumnVisible = {
   saveDir: true,
   category: true,
   status: true,
-  message: true,
-  cron: true
+  autoRun: true
 }
 const columnVisible = ref(
-  JSON.parse(localStorage.getItem('taskListColumnVisible') || JSON.stringify(defaultColumnVisible))
+  {
+    ...defaultColumnVisible,
+    ...(() => {
+      const stored = JSON.parse(localStorage.getItem('taskListColumnVisible') || '{}')
+      const autoRun = stored.autoRun ?? stored.cron ?? stored.nextRun ?? true
+      return {
+        ...stored,
+        autoRun,
+      }
+    })()
+  }
 )
 
 // 对话框相关
@@ -436,6 +505,10 @@ const editingTask = ref<Task | null>(null)
 const showTaskRunner = ref(false)
 const runningTask = ref<Task | null>(null)
 const runningTaskId = ref(-1)
+const showTaskLogDialog = ref(false)
+const taskLogLoading = ref(false)
+const activeTaskLogTask = ref<Task | null>(null)
+const taskLogContent = ref('')
 
 // 拖拽状态
 const isDragging = ref(false)
@@ -445,6 +518,13 @@ let sortableInstance: Sortable | null = null
 const tableKey = ref(0)
 
 // 计算属性
+const subscriptionStats = computed(() => ({
+  total: tasks.value.length,
+  running: tasks.value.filter(task => task.status === 'running').length,
+  error: tasks.value.filter(task => ['error', 'failed'].includes(task.status)).length,
+  cronEnabled: tasks.value.filter(task => Boolean(task.cron)).length,
+}))
+
 const uniqueCategories = computed(() => {
   const categories = tasks.value
     .map(task => task.category)
@@ -486,6 +566,7 @@ const filteredTasks = computed(() => {
   return result
 })
 
+
 const canDragSort = computed(() => {
   return !searchQuery.value && statusFilter.value === 'all' && categoryFilter.value === 'all' && !isReversed.value
 })
@@ -524,16 +605,17 @@ const executeTask = async (taskId: number) => {
     ElMessage.warning('任务正在执行中')
     return
   }
-  
-  // 设置运行窗口数据并显示
-  runningTask.value = task
-  runningTaskId.value = taskId
-  showTaskRunner.value = true
-  
-  // 执行任务（不等待完成）
-  executeTaskWithPolling(taskId).catch((error) => {
+
+  try {
+    await executeTaskWithPolling(taskId)
+
+    const latestTask = tasks.value.find(t => t.order - 1 === taskId) || task
+    runningTask.value = latestTask
+    runningTaskId.value = taskId
+    showTaskRunner.value = true
+  } catch (error) {
     console.error('任务执行失败:', error)
-  })
+  }
 }
 
 const executeBatchTasks = async () => {
@@ -587,6 +669,15 @@ const addTask = () => {
   showAddTaskDialog.value = true
 }
 
+const handleCreateTask = () => {
+  if (activeTaskType.value === 'subscription') {
+    addTask()
+    return
+  }
+
+  localSyncTaskManagerRef.value?.openCreateDialog()
+}
+
 const editTask = (task: Task) => {
   editingTask.value = task
   showAddTaskDialog.value = true
@@ -621,6 +712,102 @@ const handleTaskRunnerClose = () => {
   runningTask.value = null
   runningTaskId.value = -1
 }
+
+const taskLogDialogTitle = computed(() => {
+  return activeTaskLogTask.value?.name
+    ? `最近日志 - ${activeTaskLogTask.value.name}`
+    : '最近日志'
+})
+
+const formatTaskNextRun = (task: Task) => {
+  if (!task.next_run_at) {
+    return '未设置自动运行'
+  }
+
+  try {
+    const date = new Date(task.next_run_at)
+    if (Number.isNaN(date.getTime())) {
+      return task.next_run_at
+    }
+    return date.toLocaleString()
+  } catch {
+    return task.next_run_at
+  }
+}
+
+const formatTaskSchedule = (task: Task) => {
+  if (task.cron) {
+    return task.cron
+  }
+
+  return '使用默认'
+}
+
+const getTaskSyncTags = (task: Task) => {
+  const tags: string[] = []
+
+  if (task.sync_mode === 'full') {
+    tags.push('全量')
+  } else if (task.sync_mode === 'incremental') {
+    tags.push('增量')
+  }
+
+  if (task.sync_scope_type === 'recent_months' && task.recent_months) {
+    tags.push(`最近${task.recent_months}个月`)
+  } else if (task.sync_scope_type === 'month_range' && task.scope_start_month && task.scope_end_month) {
+    tags.push(`${task.scope_start_month}~${task.scope_end_month}`)
+  }
+
+  if (task.date_dir_mode === 'custom') {
+    tags.push('自定义目录')
+  }
+
+  return tags
+}
+
+const formatTaskLogLines = (logs: Array<{ timestamp?: string; level?: string; message?: string }>) => {
+  return logs.map((log) => {
+    const parts = [log.timestamp, log.level].filter(Boolean)
+    const prefix = parts.length > 0 ? `[${parts.join(' ')}] ` : ''
+    return `${prefix}${log.message || ''}`.trimEnd()
+  }).join('\n')
+}
+
+const loadTaskLogs = async (task: Task) => {
+  taskLogLoading.value = true
+  try {
+    const response = await apiService.getTaskLog({
+      taskId: task.order - 1,
+      taskUid: task.task_uid,
+      taskOrder: task.order,
+    })
+    if (!response.success) {
+      throw new Error(response.message || '获取任务日志失败')
+    }
+
+    const logs = response.logs || response.data?.logs || []
+    taskLogContent.value = formatTaskLogLines(logs)
+  } catch (error) {
+    taskLogContent.value = ''
+    ElMessage.error(error instanceof Error ? error.message : '获取任务日志失败')
+  } finally {
+    taskLogLoading.value = false
+  }
+}
+
+const openTaskLogDialog = async (task: Task) => {
+  activeTaskLogTask.value = task
+  showTaskLogDialog.value = true
+  await loadTaskLogs(task)
+}
+
+const refreshTaskLogs = async () => {
+  if (!activeTaskLogTask.value) {
+    return
+  }
+  await loadTaskLogs(activeTaskLogTask.value)
+}
+
 
 // 拖拽功能
 const initSortable = async () => {
@@ -765,7 +952,7 @@ const getStatusText = (status: string) => {
 
 // 全局添加任务事件处理
 const handleGlobalAddTask = () => {
-  addTask() // 调用现有的添加任务方法
+  handleCreateTask()
 }
 
 onMounted(async () => {
@@ -810,6 +997,38 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
   margin-bottom: 24px;
 }
 
+.task-type-switch {
+  margin-bottom: 20px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stats-card {
+  padding: 18px 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+.stats-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 10px;
+}
+
+.stats-value {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+  color: #303133;
+}
+
 .page-title {
   font-size: 24px;
   font-weight: 600;
@@ -847,6 +1066,38 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
   overflow: hidden;
 }
 
+.task-page-tip {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #909399;
+}
+
+.dialog-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.task-log-panel {
+  min-height: 320px;
+  max-height: 60vh;
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  background: #0f172a;
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.text-muted {
+  color: #909399;
+}
+
 .sort-tip {
   padding: 12px 16px;
   font-size: 13px;
@@ -866,54 +1117,43 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
   width: 100%;
 }
 
-/* 通过 colgroup > col 设置列宽百分比 */
-.desktop-table :deep(colgroup col[name="el-table_1_column_1"]) {
-  width: 3% !important;
+.desktop-table :deep(.el-table__cell) {
+  padding: 12px 10px;
 }
 
-.desktop-table :deep(colgroup col[name="el-table_1_column_2"]) {
-  width: 3% !important;
+.desktop-table :deep(.col-selection .cell),
+.desktop-table :deep(.col-drag .cell),
+.desktop-table :deep(.col-order .cell),
+.desktop-table :deep(.col-status .cell),
+.desktop-table :deep(.col-actions .cell) {
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
-.desktop-table :deep(colgroup col[name="el-table_1_column_3"]) {
-  width: 3% !important;
+.desktop-table :deep(.col-actions .cell) {
+  white-space: nowrap;
 }
 
-.desktop-table :deep(colgroup col[name="el-table_1_column_4"]) {
-  width: 9% !important;
+.desktop-table :deep(.col-actions .el-button-group) {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
 }
 
-.desktop-table :deep(colgroup col[name="el-table_1_column_5"]) {
-  width: 25% !important;
-}
-
-.desktop-table :deep(colgroup col[name="el-table_1_column_6"]) {
-  width: 14% !important;
-}
-
-.desktop-table :deep(colgroup col[name="el-table_1_column_7"]) {
-  width: 6% !important;
-}
-
-.desktop-table :deep(colgroup col[name="el-table_1_column_8"]) {
-  width: 14% !important;
-}
-
-.desktop-table :deep(colgroup col[name="el-table_1_column_9"]) {
-  width: 7% !important;
-}
-
-.desktop-table :deep(colgroup col[name="el-table_1_column_10"]) {
-  width: 5% !important;
-}
-
-.desktop-table :deep(colgroup col[name="el-table_1_column_11"]) {
-  width: 11% !important;
+.desktop-table :deep(.col-actions .el-button) {
+  padding: 5px 8px;
 }
 
 .task-name {
   font-weight: 500;
   color: #333;
+}
+
+.task-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #909399;
 }
 
 .source-link {
@@ -990,6 +1230,18 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
   font-size: 12px;
 }
 
+@media (max-width: 992px) {
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .advanced-features {
   display: flex;
   flex-wrap: wrap;
@@ -1058,14 +1310,14 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
   background: white;
   border-radius: 12px;
   border: 1px solid #e4e7ed;
-  padding: 14px;
-  margin-bottom: 10px;
+  padding: 14px 15px;
+  margin-bottom: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-left: 3px solid transparent;
   transition: all 0.2s ease;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
 }
 
 .task-card:hover {
@@ -1117,14 +1369,15 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
 }
 
 .card-content {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .content-row {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   font-size: 14px;
+  gap: 8px;
 }
 
 .content-row:last-child {
@@ -1134,7 +1387,7 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
 .content-row .label {
   color: #606266;
   font-weight: 500;
-  min-width: 80px;
+  min-width: 72px;
   flex-shrink: 0;
 }
 
@@ -1142,6 +1395,13 @@ watch([searchQuery, statusFilter, categoryFilter, isReversed], async () => {
   color: #303133;
   word-break: break-all;
   flex: 1;
+}
+
+.value-group {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
 }
 
 .advanced-tags {

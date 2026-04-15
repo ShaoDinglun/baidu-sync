@@ -1,6 +1,6 @@
 # 百度网盘自动转存工具 - 前端
 
-基于 Vue 3 + TypeScript + Element Plus 的现代化前端重构版本。
+基于 Vue 3 + TypeScript + Element Plus 的前端管理中台。
 
 ## 🚀 快速开始
 
@@ -18,29 +18,35 @@ npm install
 
 ### 开发模式
 
-**⚠️ 重要：需要按顺序启动后端和前端**
+需要按顺序启动后端和前端。
 
-#### 1. 启动后端 (必须先启动)
+#### 1. 启动后端
+
 ```bash
-# 在项目根目录下
-python web_app.py
+cd /path/to/baidu-autosave
+python -m backend.web_app
 ```
-后端将运行在 `http://localhost:5000`
+
+后端默认运行在 `http://localhost:5000`。
 
 #### 2. 启动前端
-```bash
-# 确保在 frontend 目录下
-npm run dev
 
-# 或使用快捷脚本
+```bash
+cd /path/to/baidu-autosave/frontend
+npm run dev
+```
+
+也可以使用快捷脚本：
+
+```bash
 # Windows
 start.bat
+
 # Linux/Mac
 ./start.sh
 ```
 
-启动后访问：http://localhost:3000  
-API 请求会自动代理到后端的 5000 端口
+启动后访问 `http://localhost:3001`，API 请求会自动代理到后端 `5000` 端口。
 
 ### 生产构建
 
@@ -48,80 +54,64 @@ API 请求会自动代理到后端的 5000 端口
 npm run build
 ```
 
-构建文件将输出到 `dist` 目录
+构建文件输出到 `dist` 目录。
 
 ## 📁 项目结构
 
-```
+```text
 frontend/
 ├── src/
-│   ├── components/          # 组件系统
-│   │   ├── layout/         # 布局组件
-│   │   │   ├── AppLayout.vue      # 主布局
-│   │   │   ├── AppHeader.vue      # 头部导航
-│   │   │   ├── AppSidebar.vue     # 侧边栏
-│   │   │   └── AppBottomNav.vue   # 底部导航
-│   │   └── business/       # 业务组件
-│   │       └── AddTaskDialog.vue  # 任务对话框
-│   ├── views/              # 页面组件
-│   │   ├── login/          # 登录页面
-│   │   ├── dashboard/      # 仪表盘
-│   │   ├── tasks/          # 任务管理
-│   │   ├── users/          # 用户管理
-│   │   └── settings/       # 系统设置
-│   ├── stores/             # 状态管理 (Pinia)
-│   │   ├── auth.ts         # 认证状态
-│   │   ├── tasks.ts        # 任务管理
-│   │   ├── users.ts        # 用户管理
-│   │   └── config.ts       # 配置管理
-│   ├── services/           # API服务层
-│   │   ├── http.ts         # HTTP客户端
-│   │   ├── api.ts          # API接口
-│   │   └── polling.ts      # 轮询服务
-│   ├── composables/        # 组合式函数
-│   │   ├── usePolling.ts   # 轮询管理
-│   │   ├── useTasks.ts     # 任务操作
-│   │   └── useVersionCheck.ts # 版本检查
-│   ├── utils/              # 工具函数
-│   ├── types/              # TypeScript类型定义
-│   ├── router/             # 路由配置
-│   ├── config/             # 配置文件
-│   ├── App.vue             # 根组件
-│   └── main.ts             # 应用入口
-├── public/                 # 静态资源
-│   └── favicon/           # 应用图标
-├── package.json            # 依赖配置
-├── vite.config.ts          # Vite配置
-├── tsconfig.json          # TypeScript配置
-├── start.sh               # Linux/Mac启动脚本
-└── start.bat              # Windows启动脚本
+│   ├── components/
+│   │   ├── layout/                  # 布局组件
+│   │   └── business/                # 业务组件
+│   │       ├── AddTaskDialog.vue    # 订阅任务对话框
+│   │       ├── TaskRunnerDialog.vue # 订阅任务执行与日志
+│   │       └── LocalSyncTaskManager.vue # 本地同步任务面板
+│   ├── views/
+│   │   ├── dashboard/
+│   │   ├── login/
+│   │   ├── settings/
+│   │   ├── tasks/                   # 任务管理页面
+│   │   └── users/
+│   ├── stores/                      # Pinia 状态管理
+│   ├── services/                    # API 服务与轮询
+│   ├── composables/
+│   ├── router/
+│   ├── types/
+│   ├── utils/
+│   ├── App.vue
+│   └── main.ts
+├── public/
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── start.sh
+└── start.bat
 ```
 
 ## 🛠️ 技术栈
 
-- **框架**: Vue 3 (Composition API)
-- **语言**: TypeScript (严格模式)
-- **构建工具**: Vite
-- **UI组件库**: Element Plus
-- **状态管理**: Pinia
-- **路由**: Vue Router 4
-- **工具库**: @vueuse/core
+- Vue 3
+- TypeScript
+- Vite
+- Element Plus
+- Pinia
+- Vue Router 4
 
-## 📋 主要功能
+## 📋 当前实现
 
-### 已实现功能
+- 用户认证和登录。
+- 订阅任务管理：新增、编辑、删除、执行、批量操作。
+- 本地同步任务管理：新增、编辑、删除、单任务执行、日志查看。
+- 任务管理页面双面板：订阅同步任务 / 本地同步任务。
+- 用户管理、设置管理、版本检查。
+- 基于轮询的任务状态更新。
 
-- ✅ 用户认证和登录
-- ✅ 完整的布局系统（头部、侧边栏、底部导航）
-- ✅ 响应式设计（桌面端/移动端自适应）
-- ✅ 任务管理（添加、编辑、删除、执行）
-- ✅ 批量操作（批量执行、批量删除）
-- ✅ 用户管理（添加、切换、配额查看）
-- ✅ 系统设置（通知、定时、分享配置）
-- ✅ 实时状态更新（轮询机制）
-- ✅ 版本检查和更新提醒
-- ✅ 状态持久化（侧边栏折叠等）
-- ✅ 无障碍设计支持
+## 当前边界
+
+- 前端当前只消费 HTTP 接口与轮询接口，不依赖 WebSocket。
+- “任务管理”页面分为两套独立面板：订阅同步任务和本地同步任务。
+- 本地同步面板只负责百度网盘到本地目录的任务配置、执行与日志展示，不直接访问分享链接。
 
 ### API兼容性
 
@@ -150,7 +140,7 @@ export const VERSION_CONFIG = {
 
 ```typescript
 server: {
-  port: 3000,
+  port: 3001,
   proxy: {
     '/api': 'http://localhost:5000',
     '/login': 'http://localhost:5000'
@@ -221,7 +211,7 @@ export function useTasks() {
 - **平板端**: 768px - 1024px  
 - **桌面端**: > 1024px
 
-使用 CSS 媒体查询和 @vueuse/core 的 breakpoints 功能。
+使用 CSS 媒体查询和组件级响应式样式适配不同设备宽度。
 
 ## 🚦 部署说明
 
@@ -229,7 +219,7 @@ export function useTasks() {
 
 1. 启动后端服务（端口5000）
 2. 启动前端开发服务器：`npm run dev`
-3. 访问 http://localhost:3000
+3. 访问 http://localhost:3001
 
 ### 生产环境部署
 

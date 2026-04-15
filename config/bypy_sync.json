@@ -1,0 +1,47 @@
+{
+  "bypy": {
+    "binary": "bypy",
+    "config_dir": "/home/leon/.bypy",
+    "retry_times": 3,
+    "retry_delay_seconds": 5,
+    "retry_backoff": 2,
+    "network_timeout": 300,
+    "command_timeout": 0,
+    "command_heartbeat_seconds": 15,
+    "min_command_interval_seconds": 1.0,
+    "processes": 1,
+    "verify_download": false,
+    "log_dir": "log/bypy_sync",
+    "summary_file": "log/bypy_sync/last_run.json",
+    "lock_file": "log/bypy_sync/bypy_full_sync.lock",
+    "state_file": "log/bypy_sync/current_state.json"
+  },
+  "tasks": [
+    {
+      "task_id": "e9cb8564ada2430088de9b042b20e1fb",
+      "name": "A股数据分笔数据全量拉取",
+      "enabled": true,
+      "auto_run_enabled": true,
+      "cron": "0 17-23 * * 1-6",
+      "remote_root": "/A股数据_分笔数据",
+      "local_root": "/data/baidu/A股数据_分笔数据",
+      "directory_filters": [],
+      "sync_mode": "all",
+      "recent_value": 0,
+      "overwrite_policy": "if_newer"
+    },
+    {
+      "task_id": "7e5c6c67d4c74313af6466a95362b9bc",
+      "name": "A股数据分笔成交指数全量拉取",
+      "enabled": true,
+      "auto_run_enabled": true,
+      "cron": "0 17-23 * * 1-6",
+      "remote_root": "/A股数据_分笔成交_指数",
+      "local_root": "/data/baidu/A股数据_分笔成交_指数",
+      "directory_filters": [],
+      "sync_mode": "recent_months",
+      "recent_value": 2,
+      "overwrite_policy": "if_newer"
+    }
+  ]
+}

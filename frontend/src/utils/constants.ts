@@ -5,7 +5,8 @@ export const TASK_STATUS = {
   NORMAL: 'normal',
   ERROR: 'error', 
   RUNNING: 'running',
-  SUCCESS: 'success'
+  SUCCESS: 'success',
+  CANCELLED: 'cancelled'
 } as const
 
 // 任务状态对应的中文文本
@@ -13,7 +14,8 @@ export const TASK_STATUS_TEXT = {
   [TASK_STATUS.NORMAL]: '正常',
   [TASK_STATUS.ERROR]: '错误',
   [TASK_STATUS.RUNNING]: '运行中',
-  [TASK_STATUS.SUCCESS]: '成功'
+  [TASK_STATUS.SUCCESS]: '成功',
+  [TASK_STATUS.CANCELLED]: '已取消'
 } as const
 
 // 任务状态对应的颜色
@@ -21,7 +23,8 @@ export const TASK_STATUS_COLOR = {
   [TASK_STATUS.NORMAL]: '#909399',
   [TASK_STATUS.ERROR]: '#F56C6C',
   [TASK_STATUS.RUNNING]: '#E6A23C',
-  [TASK_STATUS.SUCCESS]: '#67C23A'
+  [TASK_STATUS.SUCCESS]: '#67C23A',
+  [TASK_STATUS.CANCELLED]: '#909399'
 } as const
 
 // 用户角色常量

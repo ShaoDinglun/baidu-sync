@@ -14,13 +14,11 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.1.0",
-    "@vueuse/core": "^10.7.0",
     "element-plus": "^2.4.0",
     "pinia": "^2.1.0",
     "sortablejs": "^1.15.0",
     "vue": "^3.4.0",
-    "vue-router": "^4.2.0",
-    "vuedraggable": "^4.1.0"
+    "vue-router": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

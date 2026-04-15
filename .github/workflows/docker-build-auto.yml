@@ -6,11 +6,10 @@ on:
     paths:
       - 'frontend/package.json'
       - 'frontend/src/**'
-      - 'web_app.py'
-      - 'storage.py'
-      - 'scheduler.py'
-      - 'notify.py'
-      - 'utils.py'
+      - 'backend/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'config/bypy_sync.example.json'
 
 env:
   REGISTRY: docker.io

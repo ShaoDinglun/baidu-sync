@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs'
-import { defineConfig } from 'vite'
+import type { IncomingMessage } from 'http'
+import { defineConfig, type ProxyOptions } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import AutoImport from 'unplugin-auto-import/vite'
@@ -20,15 +21,15 @@ const forwardedProto = (() => {
   }
 })()
 
-const createProxyConfig = (withBypass = false) => ({
+const createProxyConfig = (withBypass = false): ProxyOptions => ({
   target: backendTarget,
   changeOrigin: false,
   secure: false,
   xfwd: true,
   cookieDomainRewrite: false,
   cookiePathRewrite: false,
-  configure: (proxy) => {
-    proxy.on('proxyReq', (proxyReq, req) => {
+  configure: (proxy: any) => {
+    proxy.on('proxyReq', (proxyReq: any, req: IncomingMessage) => {
       // 使用当前访问地址透传 Host，兼容本机 IP 调试。
       const host = req.headers.host || 'localhost:3001'
       proxyReq.setHeader('X-Forwarded-Host', host)
@@ -37,7 +38,7 @@ const createProxyConfig = (withBypass = false) => ({
   },
   ...(withBypass
     ? {
-        bypass: (req) => {
+        bypass: (req: IncomingMessage) => {
           // 只代理表单提交，页面路由继续交给前端处理。
           if (req.method !== 'POST') {
             return '/index.html'
@@ -46,6 +47,34 @@ const createProxyConfig = (withBypass = false) => ({
       }
     : {}),
 })
+
+const getElementChunkName = (id: string) => {
+  if (id.includes('/node_modules/@element-plus/icons-vue/')) {
+    return 'element-icons'
+  }
+
+  if (!id.includes('/node_modules/element-plus/')) {
+    return null
+  }
+
+  if (/(form|input|input-number|select|option|checkbox|radio|switch|cascader|upload|autocomplete)/.test(id)) {
+    return 'element-form'
+  }
+
+  if (/(table|tag|card|descriptions|empty|skeleton|image|badge|avatar|progress|result)/.test(id)) {
+    return 'element-data'
+  }
+
+  if (/(dialog|drawer|message|message-box|notification|loading|popover|tooltip|tour|overlay)/.test(id)) {
+    return 'element-feedback'
+  }
+
+  if (/(menu|tabs|breadcrumb|dropdown|pagination|steps|segmented)/.test(id)) {
+    return 'element-navigation'
+  }
+
+  return 'element-base'
+}
 
 export default defineConfig({
   base: './',
@@ -87,9 +116,25 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['vue', 'vue-router', 'pinia'],
-          element: ['element-plus'],
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/')
+
+          if (normalizedId.includes('/node_modules/vue/') || normalizedId.includes('/node_modules/vue-router/') || normalizedId.includes('/node_modules/pinia/')) {
+            return 'vendor-core'
+          }
+
+          if (normalizedId.includes('/node_modules/sortablejs/')) {
+            return 'vendor-sortable'
+          }
+
+          const elementChunkName = getElementChunkName(normalizedId)
+          if (elementChunkName) {
+            return elementChunkName
+          }
+
+          if (normalizedId.includes('/node_modules/')) {
+            return 'vendor-misc'
+          }
         },
       },
     },

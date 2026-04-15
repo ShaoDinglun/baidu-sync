@@ -19,7 +19,8 @@ export const useTaskStore = defineStore('tasks', () => {
       normal: [] as Task[],
       error: [] as Task[],
       running: [] as Task[],
-      success: [] as Task[]
+      success: [] as Task[],
+      cancelled: [] as Task[]
     }
     
     tasks.value.forEach(task => {
@@ -106,7 +107,8 @@ export const useTaskStore = defineStore('tasks', () => {
       normal: 0,
       error: 0,
       running: 0,
-      success: 0
+      success: 0,
+      cancelled: 0
     }
 
     tasks.value.forEach(task => {
@@ -193,7 +195,7 @@ export const useTaskStore = defineStore('tasks', () => {
   const executeTask = async (taskId: number) => {
     try {
       // 更新任务状态为运行中
-      const task = tasks.value.find(t => t.order === taskId)
+      const task = tasks.value.find(t => t.order - 1 === taskId)
       if (task) {
         task.status = TASK_STATUS.RUNNING
         task.message = '正在执行...'
@@ -211,7 +213,7 @@ export const useTaskStore = defineStore('tasks', () => {
       return response
     } catch (err) {
       // 恢复任务状态
-      const task = tasks.value.find(t => t.order === taskId)
+      const task = tasks.value.find(t => t.order - 1 === taskId)
       if (task) {
         task.status = TASK_STATUS.ERROR
         task.message = getErrorMessage(err)
@@ -226,7 +228,7 @@ export const useTaskStore = defineStore('tasks', () => {
     try {
       // 更新选中任务状态为运行中
       taskIds.forEach(taskId => {
-        const task = tasks.value.find(t => t.order === taskId)
+        const task = tasks.value.find(t => t.order - 1 === taskId)
         if (task) {
           task.status = TASK_STATUS.RUNNING
           task.message = '正在执行...'
@@ -242,7 +244,7 @@ export const useTaskStore = defineStore('tasks', () => {
     } catch (err) {
       // 恢复任务状态
       taskIds.forEach(taskId => {
-        const task = tasks.value.find(t => t.order === taskId)
+        const task = tasks.value.find(t => t.order - 1 === taskId)
         if (task) {
           task.status = TASK_STATUS.ERROR
           task.message = getErrorMessage(err)

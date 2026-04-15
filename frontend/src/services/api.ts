@@ -4,10 +4,35 @@ import type {
   Task, User, Config,
   CreateTaskRequest, UpdateTaskRequest,
   CreateUserRequest, UpdateUserRequest,
-  ApiResponse
+  ApiResponse,
+  LocalSyncOverview,
+  LocalSyncTaskConfig,
+  LocalSyncDirectoryOption
 } from '@/types'
 
+type TaskQueryRef = number | {
+  taskId?: number
+  taskUid?: string
+  taskOrder?: number
+}
+
 export class ApiService {
+  private normalizeTaskQuery(taskRef: TaskQueryRef): { taskId: number; params?: { task_uid?: string; task_order?: number } } {
+    if (typeof taskRef === 'number') {
+      return { taskId: taskRef }
+    }
+
+    const taskId = taskRef.taskId ?? (typeof taskRef.taskOrder === 'number' ? Math.max(taskRef.taskOrder - 1, 0) : 0)
+
+    return {
+      taskId,
+      params: {
+        task_uid: taskRef.taskUid,
+        task_order: taskRef.taskOrder,
+      }
+    }
+  }
+
   // 任务相关API
   async getTasks(): Promise<ApiResponse<{ tasks: Task[] }>> {
     return httpClient.get('/api/tasks')
@@ -31,6 +56,10 @@ export class ApiService {
 
   async executeBatchTasks(taskIds: number[]): Promise<ApiResponse<any>> {
     return httpClient.post('/api/tasks/execute-all', { task_ids: taskIds })
+  }
+
+  async cancelTask(taskOrder: number, taskUid?: string): Promise<ApiResponse<any>> {
+    return httpClient.post('/api/task/cancel', { task_order: taskOrder, task_uid: taskUid })
   }
 
   async deleteBatchTasks(taskIds: number[]): Promise<ApiResponse<void>> {
@@ -110,16 +139,74 @@ export class ApiService {
     return httpClient.get('/api/version/check', { source })
   }
 
+  async getLocalSyncStatus(): Promise<ApiResponse<LocalSyncOverview>> {
+    return httpClient.get('/api/local-sync/status')
+  }
+
+  async getLocalSyncTasks(): Promise<ApiResponse<{ tasks: LocalSyncTaskConfig[] }>> {
+    return httpClient.get('/api/local-sync/tasks')
+  }
+
+  async saveLocalSyncTask(task: Partial<LocalSyncTaskConfig>): Promise<ApiResponse<{ task: LocalSyncTaskConfig; tasks: LocalSyncTaskConfig[] }>> {
+    return httpClient.post('/api/local-sync/tasks/save', task)
+  }
+
+  async deleteLocalSyncTask(taskId: string): Promise<ApiResponse<{ tasks: LocalSyncTaskConfig[] }>> {
+    return httpClient.post('/api/local-sync/tasks/delete', { task_id: taskId })
+  }
+
+  async runLocalSyncTask(taskId: string, dryRun = false): Promise<ApiResponse<any>> {
+    return httpClient.post('/api/local-sync/tasks/run', {
+      task_id: taskId,
+      dry_run: dryRun,
+    })
+  }
+
+  async getLocalSyncTaskLogs(taskId: string, lines = 200): Promise<ApiResponse<{ logs: string; log_file: string; task_name: string; running: boolean; message?: string }>> {
+    return httpClient.get('/api/local-sync/tasks/logs', {
+      task_id: taskId,
+      lines,
+    })
+  }
+
+  async getLocalSyncDirectories(params: { taskId?: string; remoteRoot?: string }): Promise<ApiResponse<{ directories: LocalSyncDirectoryOption[]; remote_root: string }>> {
+    return httpClient.get('/api/local-sync/directories', {
+      task_id: params.taskId,
+      remote_root: params.remoteRoot,
+    })
+  }
+
+  async startLocalSync(syncType: 'incremental' | 'full', dryRun = false, tasks: string[] = []): Promise<ApiResponse<any>> {
+    return httpClient.post('/api/local-sync/start', {
+      sync_type: syncType,
+      dry_run: dryRun,
+      tasks,
+    })
+  }
+
+  async stopLocalSync(syncType: 'incremental' | 'full'): Promise<ApiResponse<any>> {
+    return httpClient.post('/api/local-sync/stop', { sync_type: syncType })
+  }
+
+  async getLocalSyncLogs(syncType: 'incremental' | 'full', lines = 120): Promise<ApiResponse<{ logs: string; log_file: string }>> {
+    return httpClient.get('/api/local-sync/logs', {
+      sync_type: syncType,
+      lines,
+    })
+  }
+
   async getTasksStatus(): Promise<ApiResponse<{ tasks: Task[] }>> {
     return httpClient.get('/api/tasks/status')
   }
 
-  async getTaskStatus(taskId: number): Promise<ApiResponse<Task>> {
-    return httpClient.get(`/api/tasks/${taskId}/status`)
+  async getTaskStatus(taskRef: TaskQueryRef): Promise<ApiResponse<Task>> {
+    const { taskId, params } = this.normalizeTaskQuery(taskRef)
+    return httpClient.get(`/api/tasks/${taskId}/status`, params)
   }
 
-  async getTaskLog(taskId: number): Promise<ApiResponse<any>> {
-    return httpClient.get(`/api/task/log/${taskId}`)
+  async getTaskLog(taskRef: TaskQueryRef): Promise<ApiResponse<any>> {
+    const { taskId, params } = this.normalizeTaskQuery(taskRef)
+    return httpClient.get(`/api/task/log/${taskId}`, params)
   }
 
   // 认证相关API

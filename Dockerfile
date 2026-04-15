@@ -6,11 +6,11 @@ WORKDIR /app/frontend
 # 复制前端依赖文件
 COPY frontend/package*.json ./
 
-# 安装前端依赖（包含devDependencies用于构建）
+# 安装前端依赖（包含 devDependencies 用于构建）
 RUN npm ci
 
 # 复制前端源码
-COPY frontend/ .
+COPY frontend/ ./
 
 # 构建前端（跳过类型检查以避免构建失败）
 RUN npm run build:prod
@@ -28,7 +28,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 # 先复制依赖文件以利用缓存
-COPY requirements.txt .
+COPY requirements.txt ./
 
 # 安装依赖到虚拟环境
 RUN python -m venv /opt/venv && \
@@ -37,37 +37,32 @@ RUN python -m venv /opt/venv && \
 # 阶段3: 创建最终镜像
 FROM python:3.10-slim
 
-# 设置时区和环境变量
 ENV PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
     PATH="/opt/venv/bin:$PATH"
 
-# 从构建阶段复制虚拟环境
 COPY --from=backend-builder /opt/venv /opt/venv
 
 WORKDIR /app
 
-# 复制后端应用文件
-COPY *.py ./
+# 复制后端应用文件（包含 backend/bypy_sync 子包）
+COPY backend/ ./backend/
 
-# 从前端构建阶段复制构建产物到static目录（替换旧前端）
-COPY --from=frontend-builder /app/frontend/dist/ static/
-
-# 模板文件已移除，改用Vue前端
+# 复制前端构建产物
+COPY --from=frontend-builder /app/frontend/dist/ ./static/
 
 # 复制配置模板
 COPY config/config.template.json ./template/config.template.json
+COPY config/bypy_sync.example.json ./template/bypy_sync.example.json
 
-# 创建目录并设置权限
 RUN mkdir -p config log template && \
     chmod -R 777 config log template
 
-# 创建启动脚本
 RUN echo '#!/bin/sh\n\
 # 等待卷挂载完成\n\
 sleep 2\n\
 \n\
-# 检查配置文件\n\
+# 检查主配置文件\n\
 if [ ! -f /app/config/config.json ]; then\n\
     echo "配置文件不存在，从模板创建..."\n\
     cp /app/template/config.template.json /app/config/config.json\n\
@@ -75,7 +70,6 @@ if [ ! -f /app/config/config.json ]; then\n\
     echo "已从模板创建配置文件"\n\
 elif [ ! -s /app/config/config.json ]; then\n\
     echo "警告：配置文件为空！"\n\
-    # 备份空文件\n\
     cp /app/config/config.json /app/config/config.json.empty.backup.$(date +%s)\n\
     echo "已备份空配置文件，从模板恢复..."\n\
     cp /app/template/config.template.json /app/config/config.json\n\
@@ -85,7 +79,24 @@ else\n\
     echo "使用现有配置文件"\n\
 fi\n\
 \n\
-exec python web_app.py' > start.sh && \
+# 检查本地同步配置文件\n\
+if [ ! -f /app/config/bypy_sync.json ]; then\n\
+    echo "本地同步配置不存在，从模板创建..."\n\
+    cp /app/template/bypy_sync.example.json /app/config/bypy_sync.json\n\
+    chmod 666 /app/config/bypy_sync.json\n\
+    echo "已从模板创建本地同步配置文件"\n\
+elif [ ! -s /app/config/bypy_sync.json ]; then\n\
+    echo "警告：本地同步配置为空！"\n\
+    cp /app/config/bypy_sync.json /app/config/bypy_sync.json.empty.backup.$(date +%s)\n\
+    echo "已备份空本地同步配置文件，从模板恢复..."\n\
+    cp /app/template/bypy_sync.example.json /app/config/bypy_sync.json\n\
+    chmod 666 /app/config/bypy_sync.json\n\
+    echo "已从模板恢复本地同步配置文件"\n\
+else\n\
+    echo "使用现有本地同步配置文件"\n\
+fi\n\
+\n\
+exec python -m backend.web_app' > start.sh && \
     chmod +x start.sh
 
 EXPOSE 5000

@@ -1208,7 +1208,7 @@ onMounted(async () => {
   .remove-btn {
     align-self: flex-end;
   }
-  
+
   /* 移动端优化按钮大小 */
   :deep(.el-button) {
     min-height: 44px;

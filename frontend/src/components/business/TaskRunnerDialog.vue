@@ -280,7 +280,7 @@ const applyTaskState = (taskData: Partial<Task> | null | undefined) => {
 const isTerminalTask = (taskData: Task | null | undefined) => {
   if (!taskData) return false
 
-  if (['success', 'error', 'failed', 'completed', 'skipped'].includes(taskData.status)) {
+  if (['success', 'error', 'failed', 'completed', 'skipped', 'cancelled'].includes(taskData.status)) {
     return true
   }
 
@@ -307,6 +307,7 @@ const getStatusType = (status: string) => {
     success: 'success',
     completed: 'success',
     skipped: 'success',
+    cancelled: 'info',
     error: 'danger',
     failed: 'danger'
   }
@@ -322,6 +323,7 @@ const getAlertType = (status: string) => {
     success: 'success',
     completed: 'success',
     skipped: 'success',
+    cancelled: 'info',
     error: 'error',
     failed: 'error',
     running: 'warning',
@@ -367,7 +369,11 @@ const refreshLogs = async ({ showLoading = false }: { showLoading?: boolean } = 
   }
 
   try {
-    const response = await apiService.getTaskLog(props.taskId)
+    const response = await apiService.getTaskLog({
+      taskId: props.taskId,
+      taskUid: props.task?.task_uid,
+      taskOrder: props.task?.order,
+    })
 
     if (sessionId !== pollSessionId || currentReqId !== logsRequestId) {
       return logs.value
@@ -394,7 +400,11 @@ const checkTaskStatus = async () => {
   const sessionId = pollSessionId
 
   try {
-    const response = await apiService.getTaskStatus(props.taskId)
+    const response = await apiService.getTaskStatus({
+      taskId: props.taskId,
+      taskUid: props.task?.task_uid,
+      taskOrder: props.task?.order,
+    })
 
     if (sessionId !== pollSessionId) {
       return null
@@ -449,6 +459,8 @@ const finalizeTask = async (taskData: Task | null, options: { refreshLatestLogs?
 
   if (taskData.status === 'success' || taskData.status === 'completed' || taskData.status === 'skipped') {
     ElMessage.success('任务执行完成')
+  } else if (taskData.status === 'cancelled') {
+    ElMessage.warning('任务已取消')
   } else if (taskData.status === 'error' || taskData.status === 'failed') {
     ElMessage.error('任务执行失败')
   } else {
@@ -580,12 +592,38 @@ const startMonitoring = () => {
 }
 
 const handleCancel = async () => {
+  if (!props.task?.order) {
+    ElMessage.error('缺少任务标识，无法取消')
+    return
+  }
+
   cancelling.value = true
+  currentMessage.value = '正在取消任务...'
+
+  const cancelPayload = {
+    task_order: props.task.order,
+    task_uid: props.task.task_uid,
+  }
+
   try {
-    ElMessage.warning('任务取消功能暂未实现')
-    emit('task-cancelled')
+    if (navigator.sendBeacon) {
+      const beaconBody = new Blob([JSON.stringify(cancelPayload)], { type: 'application/json' })
+      navigator.sendBeacon('/api/task/cancel', beaconBody)
+    }
   } catch {
-    ElMessage.error('取消任务失败')
+    // 忽略 beacon 兜底错误，继续走常规请求
+  }
+
+  try {
+    const response = await apiService.cancelTask(props.task.order, props.task.task_uid)
+    if (!response.success) {
+      throw new Error(response.message || '取消任务失败')
+    }
+    currentMessage.value = response.message || '正在取消任务...'
+    ElMessage.success(response.message || '已发送取消请求')
+    emit('task-cancelled')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '取消任务失败')
   } finally {
     cancelling.value = false
   }

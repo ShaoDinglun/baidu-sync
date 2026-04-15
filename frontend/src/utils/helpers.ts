@@ -216,7 +216,11 @@ export function getTaskStatusText(status: string): string {
     normal: '正常',
     error: '错误',
     running: '运行中',
-    success: '成功'
+    success: '成功',
+    failed: '失败',
+    completed: '完成',
+    skipped: '已跳过',
+    cancelled: '已取消'
   }
   return statusMap[status] || status
 }
@@ -226,7 +230,11 @@ export function getTaskStatusColor(status: string): string {
     normal: '#909399',
     error: '#F56C6C',
     running: '#E6A23C',
-    success: '#67C23A'
+    success: '#67C23A',
+    failed: '#F56C6C',
+    completed: '#67C23A',
+    skipped: '#67C23A',
+    cancelled: '#909399'
   }
   return colorMap[status] || '#909399'
 }
