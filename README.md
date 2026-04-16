@@ -1,4 +1,4 @@
-# 百度同步
+# 百度网盘同步
 
 > **当前维护声明**：本仓库基于原作者项目继续扩展和维护，当前重点是稳定打通“订阅链接 -> 百度网盘应用目录 -> 本地目录”的全链路。项目会持续迭代，也欢迎更多人一起提交 Issue 和 PR，协助维护、排查问题和补齐文档。
 >
@@ -763,7 +763,7 @@ MIT License
 
 ## 致谢
 
-- 感谢原作者提供项目基础和最初的实现思路，让这个仓库可以在现有成果上继续演进。
+- [baidu-autosave](https://github.com/kokojacket/baidu-autosave.git) - 感谢原作者提供项目基础和最初的实现思路，让这个仓库可以在现有成果上继续演进。
 - [Flask](https://flask.palletsprojects.com/)
 - [APScheduler](https://apscheduler.readthedocs.io/)
 - [baidupcs-py](https://github.com/PeterDing/BaiduPCS-Py)
