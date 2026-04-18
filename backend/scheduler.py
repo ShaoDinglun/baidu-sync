@@ -24,6 +24,9 @@ class TaskScheduler:
     
     def __init__(self, storage=None):
         self._execution_lock = Lock()
+        self._runtime_lock = Lock()
+        self._running_task_orders = set()
+        self._shutdown_requested = False
         self.storage = storage or BaiduStorage()
         self.scheduler = None
         self.is_running = False
@@ -146,6 +149,9 @@ class TaskScheduler:
         try:
             if not self.scheduler:
                 self._init_scheduler()
+
+            with self._runtime_lock:
+                self._shutdown_requested = False
             
             # 直接启动调度器，因为任务已经在_init_scheduler中添加
             self.scheduler.start()
@@ -158,6 +164,29 @@ class TaskScheduler:
         except Exception as e:
             logger.error(f"启动调度器失败: {str(e)}")
             raise
+
+    def _mark_task_running(self, task_order):
+        with self._runtime_lock:
+            self._running_task_orders.add(task_order)
+
+    def _mark_task_finished(self, task_order):
+        with self._runtime_lock:
+            self._running_task_orders.discard(task_order)
+
+    def _is_shutdown_requested(self):
+        with self._runtime_lock:
+            return self._shutdown_requested
+
+    def request_shutdown_for_running_tasks(self, reset_message='等待执行'):
+        with self._runtime_lock:
+            self._shutdown_requested = True
+            running_orders = set(self._running_task_orders)
+
+        if running_orders:
+            self.storage.reset_running_tasks(orders=running_orders, message=reset_message)
+            logger.info(f"已请求停止定时执行中的任务: {sorted(running_orders)}")
+
+        return running_orders
 
     def _init_scheduler(self):
         """初始化调度器"""
@@ -386,7 +415,7 @@ class TaskScheduler:
         except Exception as e:
             logger.error(f"执行任务组失败: {str(e)}")
 
-    def stop(self):
+    def stop(self, wait=True):
         """停止调度器"""
         try:
             # 取消通知定时器
@@ -399,7 +428,7 @@ class TaskScheduler:
                 self._send_buffered_notification()
             
             if self.scheduler and self.is_running:
-                self.scheduler.shutdown()
+                self.scheduler.shutdown(wait=wait)
                 self.is_running = False
                 logger.info("调度器已停止")
             else:
@@ -598,6 +627,7 @@ class TaskScheduler:
                 return False
             task_id = task_order - 1  # 转换为前端使用的task_id
             task_name = current_task.get('name', f'任务{task_order}')
+            self._mark_task_running(task_order)
             self.storage.update_task_status_by_order(task_order, 'running', '定时任务执行中')
             logger.info(f"开始执行任务: {task_name}")
             logger.info(f"分享链接: {current_task.get('url', '')}")
@@ -642,11 +672,16 @@ class TaskScheduler:
                 None,
                 current_task['save_dir'],
                 progress_callback,
-                current_task  # 传入完整的任务配置
+                current_task,  # 传入完整的任务配置
+                cancel_callback=lambda: self._is_shutdown_requested()
             )
             
             # 更新任务状态和结果
             try:
+                if result.get('cancelled'):
+                    self.storage.reset_running_tasks(orders=[task_order], message='等待执行')
+                    logger.info(f"定时任务已停止并恢复状态: {task_name}")
+                    return False
                 if result.get('success'):
                     if result.get('skipped'):
                         self.storage.update_task_status_by_order(
@@ -688,18 +723,23 @@ class TaskScheduler:
         except Exception as e:
             logger.error(f"执行任务失败: {str(e)}")
             try:
-                self.storage.update_task_status_by_order(task_order, 'failed', str(e))
-                # 添加失败通知到缓冲区
-                results = {
-                    'success': [],
-                    'failed': [task],
-                    'transferred_files': {}
-                }
-                self._add_to_notification_buffer(results)
+                if self._is_shutdown_requested() and '任务已取消' in str(e):
+                    self.storage.reset_running_tasks(orders=[task_order], message='等待执行')
+                else:
+                    self.storage.update_task_status_by_order(task_order, 'failed', str(e))
+                    # 添加失败通知到缓冲区
+                    results = {
+                        'success': [],
+                        'failed': [task],
+                        'transferred_files': {}
+                    }
+                    self._add_to_notification_buffer(results)
             except:
                 pass
             return False
         finally:
+            if 'task_order' in locals() and task_order:
+                self._mark_task_finished(task_order)
             # 释放锁
             self._execution_lock.release()
 

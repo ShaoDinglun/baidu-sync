@@ -53,8 +53,20 @@ resolve_python_cmd() {
     exit 1
 }
 
+find_backend_process() {
+    pgrep -f '/home/leon/baidu-autosave/.venv/bin/python -m backend.web_app' | head -n 1
+}
+
 is_running() {
     local pid_file="$1"
+
+    if [ "$pid_file" = "$BACKEND_PID_FILE" ] && [ ! -f "$pid_file" ]; then
+        local detected_pid
+        detected_pid=$(find_backend_process || true)
+        if [ -n "$detected_pid" ]; then
+            echo "$detected_pid" >"$pid_file"
+        fi
+    fi
 
     if [ ! -f "$pid_file" ]; then
         return 1

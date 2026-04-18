@@ -167,25 +167,84 @@ def _ensure_task_runtime_state():
         app.task_order_to_uid = {}
     if not hasattr(app, 'task_cancel_flags'):
         app.task_cancel_flags = {}
+    if not hasattr(app, 'task_cancel_restore_flags'):
+        app.task_cancel_restore_flags = {}
+    if not hasattr(app, 'shutdown_in_progress'):
+        app.shutdown_in_progress = False
     if not hasattr(app, '_log_cleanup_counter'):
         app._log_cleanup_counter = 0
 
 
-def _set_task_cancel_flag(task_order, cancelled=True):
+def _set_task_cancel_flag(task_order, cancelled=True, restore_status=False):
     _ensure_task_runtime_state()
     if task_order is not None:
         app.task_cancel_flags[task_order] = cancelled
+        if restore_status:
+            app.task_cancel_restore_flags[task_order] = True
+        elif task_order in app.task_cancel_restore_flags:
+            del app.task_cancel_restore_flags[task_order]
 
 
 def _clear_task_cancel_flag(task_order):
     _ensure_task_runtime_state()
     if task_order in app.task_cancel_flags:
         del app.task_cancel_flags[task_order]
+    if task_order in app.task_cancel_restore_flags:
+        del app.task_cancel_restore_flags[task_order]
 
 
 def _is_task_cancelled(task_order):
     _ensure_task_runtime_state()
     return bool(app.task_cancel_flags.get(task_order))
+
+
+def _should_restore_cancelled_task(task_order):
+    _ensure_task_runtime_state()
+    return bool(app.shutdown_in_progress or app.task_cancel_restore_flags.get(task_order))
+
+
+def _reset_running_subscription_tasks(reset_message='等待执行'):
+    if not storage:
+        return []
+
+    _ensure_task_runtime_state()
+    changed_orders = []
+    for task in storage.list_tasks():
+        task_order = task.get('order')
+        if task.get('status') != 'running' or not task_order:
+            continue
+        _set_task_cancel_flag(task_order, True, restore_status=True)
+        changed_orders.append(task_order)
+
+    if changed_orders:
+        storage.reset_running_tasks(orders=changed_orders, message=reset_message)
+
+    return changed_orders
+
+
+def _reset_local_sync_shutdown_state():
+    now = datetime.now().isoformat(timespec='seconds')
+
+    incremental_state = _load_json_file(INCREMENTAL_SYNC_STATE_FILE, default={})
+    incremental_state.update({
+        'status': 'idle',
+        'pid': None,
+        'message': '增量同步未运行',
+        'finished_at': now,
+        'tasks': [],
+    })
+    _write_json_file(INCREMENTAL_SYNC_STATE_FILE, incremental_state)
+    _remove_file_if_exists(INCREMENTAL_SYNC_PID_FILE)
+
+    full_state = _load_json_file(FULL_SYNC_STATE_FILE, default={})
+    full_state.update({
+        'status': 'idle',
+        'pid': None,
+        'message': '全量补缺同步未运行',
+        'finished_at': now,
+        'current_task': {},
+    })
+    _write_json_file(FULL_SYNC_STATE_FILE, full_state)
 
 
 def _remember_task_stream(task_uid, task_order):
@@ -489,6 +548,54 @@ def _find_local_sync_task_log(task_name, lines=200):
     return '', ''
 
 
+def _collect_local_sync_task_log_segments(task_name, lines=200, limit=30):
+    segments = []
+    seen_paths = set()
+
+    state = _load_json_file(INCREMENTAL_SYNC_STATE_FILE, default={})
+    active_tasks = _normalize_task_filters(state.get('tasks'))
+    active_log_file = state.get('log_file') if task_name in active_tasks else ''
+    if active_log_file and os.path.exists(active_log_file):
+        segment = _extract_local_sync_task_log_segment(active_log_file, task_name, lines=lines)
+        if segment:
+            segments.append((active_log_file, segment))
+            seen_paths.add(active_log_file)
+
+    full_state = _load_json_file(FULL_SYNC_STATE_FILE, default={})
+    current_full_task = full_state.get('current_task') or {}
+    active_full_log_file = full_state.get('log_file') if current_full_task.get('name') == task_name else ''
+    if active_full_log_file and os.path.exists(active_full_log_file) and active_full_log_file not in seen_paths:
+        segment = _extract_local_sync_task_log_segment(active_full_log_file, task_name, lines=lines)
+        if segment:
+            segments.append((active_full_log_file, segment))
+            seen_paths.add(active_full_log_file)
+
+    try:
+        candidates = [
+            os.path.join(BYPY_SYNC_LOG_DIR, name)
+            for name in os.listdir(BYPY_SYNC_LOG_DIR)
+            if name.endswith('.log') and (
+                name.startswith('bypy_incremental_') or name.startswith('bypy_full_sync_')
+            )
+        ]
+    except OSError:
+        return segments
+
+    candidates.sort(key=lambda item: os.path.getmtime(item), reverse=True)
+    for path in candidates:
+        if path in seen_paths:
+            continue
+        segment = _extract_local_sync_task_log_segment(path, task_name, lines=lines)
+        if not segment:
+            continue
+        segments.append((path, segment))
+        seen_paths.add(path)
+        if len(segments) >= limit:
+            break
+
+    return segments
+
+
 def _format_local_sync_recent_message(downloaded_dirs=0, downloaded_files=0, updated_files=0):
     parts = []
     if downloaded_dirs > 0:
@@ -513,6 +620,171 @@ def _parse_local_sync_log_timestamp(value):
     return None
 
 
+def _list_backend_log_files(limit=7):
+    log_dir = os.path.join(ROOT_DIR, 'log')
+    try:
+        candidates = [
+            os.path.join(log_dir, name)
+            for name in os.listdir(log_dir)
+            if name.startswith('backend.') and name.endswith('.out.log')
+        ]
+    except OSError:
+        return []
+
+    candidates.sort(key=lambda item: os.path.getmtime(item), reverse=True)
+    return candidates[:max(1, limit)]
+
+
+def _parse_backend_log_entry(raw_line):
+    line = str(raw_line or '').rstrip('\n')
+    if not line:
+        return None
+
+    match = re.match(
+        r'^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \|\s*(?P<level>[A-Z]+)\s*\| .* - (?P<message>.*)$',
+        line,
+    )
+    if not match:
+        return None
+
+    timestamp = match.group('timestamp')
+    return {
+        'full_timestamp': timestamp,
+        'timestamp': timestamp.split(' ', 1)[1],
+        'level': match.group('level').strip(),
+        'message': match.group('message').strip(),
+    }
+
+
+def _is_subscription_task_start_message(message, task_name, task_order):
+    if not message:
+        return False
+
+    markers = [
+        f'开始执行任务: {task_name}',
+        f'开始处理任务: {task_name}',
+        f'已更新任务状态: order={task_order} -> running (正在执行任务)',
+        f'已更新任务状态: order={task_order} -> running (定时任务执行中)',
+    ]
+    return any(marker in message for marker in markers)
+
+
+def _is_subscription_task_terminal_message(message, task_name, task_order):
+    if not message:
+        return False
+
+    if f'定时任务已停止并恢复状态: {task_name}' in message:
+        return True
+
+    status_prefix = f'已更新任务状态: order={task_order} -> '
+    if status_prefix in message and any(status in message for status in ('success', 'skipped', 'failed', 'error', 'normal', 'cancelled')):
+        return True
+
+    return False
+
+
+def _normalize_subscription_log_message(message, task_name, task_order):
+    normalized = str(message or '').strip()
+
+    for prefix in (
+        f'[{task_name}] info: ',
+        f'[{task_name}] warning: ',
+        f'[{task_name}] error: ',
+        f'[{task_name}] success: ',
+        f'[任务{task_order}] ',
+    ):
+        if normalized.startswith(prefix):
+            return normalized[len(prefix):].strip()
+
+    return normalized
+
+
+def _extract_subscription_task_log_entries(path, task_name, task_order, lines=200):
+    if not path or not os.path.exists(path) or not task_name or not task_order:
+        return []
+
+    try:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as fp:
+            parsed_lines = [_parse_backend_log_entry(line) for line in fp]
+    except Exception as e:
+        logger.warning(f"读取订阅任务日志失败: {path}, 错误: {str(e)}")
+        return []
+
+    parsed_lines = [item for item in parsed_lines if item]
+    if not parsed_lines:
+        return []
+
+    start_index = -1
+    for index in range(len(parsed_lines) - 1, -1, -1):
+        if _is_subscription_task_start_message(parsed_lines[index]['message'], task_name, task_order):
+            start_index = index
+            break
+
+    if start_index < 0:
+        return []
+
+    results = []
+    terminal_seen = False
+    for index in range(start_index, len(parsed_lines)):
+        entry = parsed_lines[index]
+        message = entry['message']
+
+        if index > start_index and message.startswith('开始执行任务: ') and f'开始执行任务: {task_name}' not in message:
+            break
+
+        include_entry = True
+        if index > start_index:
+            looks_generic = not any(token in message for token in (
+                f'[{task_name}]',
+                f'[任务{task_order}]',
+                f'order={task_order}',
+                '分享链接: ',
+                '保存目录: ',
+                '提取码: ',
+                '创建临时客户端用于任务执行',
+                '临时客户端创建成功',
+                '正在访问分享链接:',
+                '使用密码 ',
+                '获取分享文件列表',
+                '成功获取分享文件列表',
+            ))
+            if looks_generic and terminal_seen:
+                break
+            if looks_generic and not terminal_seen:
+                continue
+
+        normalized_message = _normalize_subscription_log_message(message, task_name, task_order)
+        if normalized_message:
+            results.append({
+                'timestamp': entry['timestamp'],
+                'level': entry['level'],
+                'message': normalized_message,
+            })
+
+        if _is_subscription_task_terminal_message(message, task_name, task_order):
+            terminal_seen = True
+
+    if len(results) > lines:
+        head_count = min(20, max(1, lines // 5))
+        tail_count = max(20, lines - head_count - 1)
+        results = results[:head_count] + [{
+            'timestamp': '',
+            'level': 'INFO',
+            'message': '... 省略中间日志 ...',
+        }] + results[-tail_count:]
+
+    return results
+
+
+def _find_subscription_task_recent_logs(task_name, task_order, lines=200):
+    for path in _list_backend_log_files():
+        entries = _extract_subscription_task_log_entries(path, task_name, task_order, lines=lines)
+        if entries:
+            return path, entries
+
+    return '', []
+
+
 def _extract_local_sync_task_recent_status(task_name, log_file='', log_text=''):
     if not task_name:
         return {
@@ -521,12 +793,13 @@ def _extract_local_sync_task_recent_status(task_name, log_file='', log_text=''):
             'recent_run_at': None,
         }
 
-    resolved_log_file = log_file
-    resolved_log_text = log_text
-    if not resolved_log_text:
-        resolved_log_file, resolved_log_text = _find_local_sync_task_log(task_name, lines=500)
+    log_segments = []
+    if log_text:
+        log_segments.append((log_file, log_text))
+    else:
+        log_segments = _collect_local_sync_task_log_segments(task_name, lines=500)
 
-    if not resolved_log_text:
+    if not log_segments:
         return {
             'recent_run_status': None,
             'recent_run_message': '',
@@ -540,24 +813,29 @@ def _extract_local_sync_task_recent_status(task_name, log_file='', log_text=''):
     error_pattern = re.compile(rf'^{timestamp_expr} \| ERROR \| (?P<message>.+)$')
     timestamp_pattern = re.compile(rf'^{timestamp_expr}(?: \||$)')
 
-    error_messages = []
-    latest_timestamp = None
+    fallback_result = None
 
-    for raw_line in resolved_log_text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
+    for resolved_log_file, resolved_log_text in log_segments:
+        error_messages = []
+        latest_timestamp = None
 
-        timestamp_match = timestamp_pattern.match(line)
-        if timestamp_match:
-            latest_timestamp = timestamp_match.group('timestamp')
+        for raw_line in resolved_log_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
 
-        error_match = error_pattern.match(line)
-        if error_match:
-            error_messages.append(error_match.group('message').strip())
+            timestamp_match = timestamp_pattern.match(line)
+            if timestamp_match:
+                latest_timestamp = timestamp_match.group('timestamp')
 
-        end_match = end_pattern.match(line)
-        if end_match:
+            error_match = error_pattern.match(line)
+            if error_match:
+                error_messages.append(error_match.group('message').strip())
+
+            end_match = end_pattern.match(line)
+            if not end_match:
+                continue
+
             details = end_match.group('details')
 
             def _extract_metric(name, default=0):
@@ -580,30 +858,47 @@ def _extract_local_sync_task_recent_status(task_name, log_file='', log_text=''):
                     'recent_log_file': resolved_log_file,
                 }
 
-            status = 'success' if (downloaded_dirs > 0 or downloaded_files > 0 or updated_files > 0) else 'skipped'
+            if downloaded_dirs > 0 or downloaded_files > 0 or updated_files > 0:
+                return {
+                    'recent_run_status': 'success',
+                    'recent_run_message': _format_local_sync_recent_message(downloaded_dirs, downloaded_files, updated_files),
+                    'recent_run_at': finished_at,
+                    'recent_log_file': resolved_log_file,
+                }
+
+            if fallback_result is None:
+                fallback_result = {
+                    'recent_run_status': None,
+                    'recent_run_message': '',
+                    'recent_run_at': None,
+                    'recent_log_file': resolved_log_file,
+                }
+
+        if error_messages:
+            parsed_at = _parse_local_sync_log_timestamp(latest_timestamp)
             return {
-                'recent_run_status': status,
-                'recent_run_message': _format_local_sync_recent_message(downloaded_dirs, downloaded_files, updated_files),
-                'recent_run_at': finished_at,
+                'recent_run_status': 'failed',
+                'recent_run_message': error_messages[-1],
+                'recent_run_at': parsed_at,
                 'recent_log_file': resolved_log_file,
             }
 
-    if error_messages:
-        parsed_at = _parse_local_sync_log_timestamp(latest_timestamp)
-        return {
-            'recent_run_status': 'failed',
-            'recent_run_message': error_messages[-1],
-            'recent_run_at': parsed_at,
-            'recent_log_file': resolved_log_file,
-        }
+        if fallback_result is None and latest_timestamp:
+            fallback_result = {
+                'recent_run_status': 'unknown',
+                'recent_run_message': '最近一次执行结果待确认',
+                'recent_run_at': _parse_local_sync_log_timestamp(latest_timestamp),
+                'recent_log_file': resolved_log_file,
+            }
 
-    parsed_at = _parse_local_sync_log_timestamp(latest_timestamp)
+    if fallback_result is not None:
+        return fallback_result
 
     return {
         'recent_run_status': 'unknown',
         'recent_run_message': '最近一次执行结果待确认',
-        'recent_run_at': parsed_at,
-        'recent_log_file': resolved_log_file,
+        'recent_run_at': None,
+        'recent_log_file': log_segments[0][0],
     }
 
 
@@ -1269,6 +1564,15 @@ def init_app():
         # 初始化存储
         logger.info("正在初始化存储...")
         storage = BaiduStorage()
+        _ensure_task_runtime_state()
+        app.shutdown_in_progress = False
+
+        try:
+            stale_orders = storage.reset_running_tasks(message='等待执行')
+            if stale_orders:
+                logger.info(f"启动时已恢复遗留运行中任务状态: {stale_orders}")
+        except Exception as e:
+            logger.error(f"启动时恢复遗留运行中任务状态失败: {str(e)}")
         
         # 使用已创建的 storage 实例初始化调度器
         try:
@@ -1304,10 +1608,37 @@ def init_app():
 def cleanup():
     """清理资源"""
     global scheduler, local_sync_scheduler
+    _ensure_task_runtime_state()
+    app.shutdown_in_progress = True
+
+    try:
+        changed_orders = _reset_running_subscription_tasks(reset_message='等待执行')
+        if scheduler:
+            changed_orders = set(changed_orders) | set(scheduler.request_shutdown_for_running_tasks(reset_message='等待执行'))
+        if changed_orders:
+            logger.info(f"停机时已恢复订阅任务状态: {sorted(changed_orders)}")
+    except Exception as e:
+        logger.error(f"停机恢复订阅任务状态失败: {str(e)}")
+
+    try:
+        _stop_incremental_sync()
+    except Exception as e:
+        logger.error(f"停止增量同步失败: {str(e)}")
+
+    try:
+        _run_full_sync_manager('stop')
+    except Exception as e:
+        logger.error(f"停止全量补缺同步失败: {str(e)}")
+
+    try:
+        _reset_local_sync_shutdown_state()
+    except Exception as e:
+        logger.error(f"重置本地同步状态失败: {str(e)}")
+
     if scheduler:
         try:
             if hasattr(scheduler, 'is_running') and scheduler.is_running:
-                scheduler.stop()
+                scheduler.stop(wait=False)
             scheduler = None
             logger.info("调度器已停止")
         except Exception as e:
@@ -1845,9 +2176,13 @@ def execute_task():
             )
 
             if result.get('cancelled'):
-                storage.update_task_status_by_order(task_order, 'cancelled', '任务已取消')
+                if _should_restore_cancelled_task(task_order):
+                    storage.update_task_status_by_order(task_order, 'normal', '等待执行')
+                    _append_task_log(task_order, '任务因服务重启被停止，状态已恢复', level='WARNING', task_uid=task_uid)
+                else:
+                    storage.update_task_status_by_order(task_order, 'cancelled', '任务已取消')
+                    _append_task_log(task_order, '任务已取消', level='WARNING', task_uid=task_uid)
                 _publish_task_status(task_order, task_uid)
-                _append_task_log(task_order, '任务已取消', level='WARNING', task_uid=task_uid)
                 _publish_task_completed(task_order, task_uid)
             elif result.get('success'):
                 transferred_files = result.get('transferred_files', [])
@@ -1889,6 +2224,13 @@ def execute_task():
             error_msg = str(e)
             # 使用存储模块的错误解析功能
             parsed_error = storage._parse_share_error(error_msg) if storage else error_msg
+
+            if _should_restore_cancelled_task(task_order) and (_is_task_cancelled(task_order) or '任务已取消' in error_msg):
+                storage.update_task_status_by_order(task_order, 'normal', '等待执行')
+                _publish_task_status(task_order, task_uid)
+                _append_task_log(task_order, '任务因服务重启被停止，状态已恢复', level='WARNING', task_uid=task_uid)
+                _publish_task_completed(task_order, task_uid)
+                return
             
             is_share_forbidden = "error_code: 115" in error_msg
             
@@ -1970,7 +2312,7 @@ def cancel_task():
         return jsonify({'success': False, 'message': '当前任务未在执行'})
 
     logger.info(f"收到取消请求: order={task_order}, task_uid={task_uid}")
-    _set_task_cancel_flag(task_order, True)
+    _set_task_cancel_flag(task_order, True, restore_status=False)
     storage.update_task_status_by_order(task_order, 'running', '正在取消...')
     _publish_task_status(task_order, task_uid)
     _append_task_log(task_order, '收到取消请求，正在停止当前任务...', level='WARNING', task_uid=task_uid)
@@ -2484,7 +2826,10 @@ def execute_all_tasks():
 
                     if result.get('cancelled'):
                         results['cancelled'].append(task)
-                        storage.update_task_status_by_order(task_order, 'cancelled', '任务已取消')
+                        if _should_restore_cancelled_task(task_order):
+                            storage.update_task_status_by_order(task_order, 'normal', '等待执行')
+                        else:
+                            storage.update_task_status_by_order(task_order, 'cancelled', '任务已取消')
                     elif result.get('success'):
                         if result.get('skipped'):
                             results['skipped'].append(task)
@@ -2510,6 +2855,9 @@ def execute_all_tasks():
 
                 except Exception as e:
                     error_msg = str(e)
+                    if _should_restore_cancelled_task(task_order) and (_is_task_cancelled(task_order) or '任务已取消' in error_msg):
+                        storage.update_task_status_by_order(task_order, 'normal', '等待执行')
+                        continue
                     if "error_code: 115" in error_msg:
                         error_msg = "该分享链接已失效（文件禁止分享）"
                         try:
@@ -3448,7 +3796,11 @@ def get_task_log(task_id):
                 return jsonify({'success': True, 'logs': []})
 
             # 获取真实的task order
-            task_order = tasks[task_id].get('order')
+            resolved_task = tasks[task_id]
+            task_order = resolved_task.get('order')
+
+        if not resolved_task and task_order:
+            resolved_task = storage.resolve_task(order=task_order)
 
         # 定期清理旧日志（每100次请求清理一次）
         _ensure_task_runtime_state()
@@ -3457,13 +3809,24 @@ def get_task_log(task_id):
             cleanup_old_task_logs()
             app._log_cleanup_counter = 0
 
-        # 从全局变量中获取任务日志
+        task_name = resolved_task.get('name') if resolved_task else ''
+        file_path, recent_logs = _find_subscription_task_recent_logs(task_name, task_order, lines=200)
+
+        # 手动运行中的任务优先保留内存实时日志，其余场景优先返回最近一次执行日志。
+        memory_logs = []
         if hasattr(app, 'task_logs') and task_order in app.task_logs:
-            logs = app.task_logs[task_order]
-            return jsonify({'success': True, 'logs': logs})
-        else:
-            # 如果没有找到任务日志，返回空列表
-            return jsonify({'success': True, 'logs': []})
+            memory_logs = list(app.task_logs[task_order])
+
+        if resolved_task and resolved_task.get('status') == 'running' and memory_logs:
+            return jsonify({'success': True, 'logs': memory_logs, 'log_file': ''})
+
+        if recent_logs:
+            return jsonify({'success': True, 'logs': recent_logs, 'log_file': file_path})
+
+        if memory_logs:
+            return jsonify({'success': True, 'logs': memory_logs, 'log_file': ''})
+
+        return jsonify({'success': True, 'logs': [], 'log_file': ''})
     except Exception as e:
         logger.error(f"获取任务日志失败: {str(e)}")
         return jsonify({'success': False, 'message': f'获取任务日志失败: {str(e)}'})

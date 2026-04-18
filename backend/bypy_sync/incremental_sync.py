@@ -577,6 +577,19 @@ def send_incremental_notification(
     send_configured_notification("百度网盘本地同步", content)
 
 
+def should_send_incremental_notification(status: str, task_summaries: List[IncrementalTaskSummary]) -> bool:
+    if status != "success":
+        return True
+
+    return any(
+        item.downloaded_dirs > 0
+        or item.downloaded_files > 0
+        or item.updated_files > 0
+        or item.failures > 0
+        for item in task_summaries
+    )
+
+
 def select_incremental_tasks(tasks: List[Any], task_filters: List[str], include_disabled: bool) -> List[Any]:
     task_filter_set = set(task_filters)
     selected: List[Any] = []
@@ -749,14 +762,17 @@ def run_incremental_sync(
         logger.info("日志文件: %s", log_file)
         logger.info("执行汇总: %s", paths["summary_file"])
         try:
-            send_incremental_notification(
-                status=final_status,
-                message=final_message,
-                dry_run=dry_run,
-                log_file=log_file,
-                summary_text=summary_text,
-                task_names=normalized_task_filters,
-            )
+            if should_send_incremental_notification(final_status, task_summaries):
+                send_incremental_notification(
+                    status=final_status,
+                    message=final_message,
+                    dry_run=dry_run,
+                    log_file=log_file,
+                    summary_text=summary_text,
+                    task_names=normalized_task_filters,
+                )
+            else:
+                logger.info("增量同步无新增、无更新且无失败，跳过通知发送")
         finally:
             try:
                 lock_fp.close()

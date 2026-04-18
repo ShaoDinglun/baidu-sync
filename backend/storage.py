@@ -3470,6 +3470,41 @@ class BaiduStorage:
             logger.error(f"更新任务状态失败: {str(e)}")
             return False
 
+    def reset_running_tasks(self, orders=None, message='等待执行'):
+        """将运行中的任务恢复为待执行状态。"""
+        try:
+            normalized_orders = None
+            if orders is not None:
+                normalized_orders = set()
+                for order in orders:
+                    try:
+                        normalized_orders.add(int(order))
+                    except (TypeError, ValueError):
+                        continue
+
+            tasks = self.config['baidu']['tasks']
+            changed_orders = []
+            for task in tasks:
+                task_order = task.get('order')
+                if normalized_orders is not None and task_order not in normalized_orders:
+                    continue
+                if task.get('status') != 'running':
+                    continue
+
+                task['status'] = 'normal'
+                task['message'] = message
+                task.pop('error', None)
+                changed_orders.append(task_order)
+
+            if changed_orders:
+                self._save_config(update_scheduler=False)
+                logger.info(f"已恢复运行中任务状态: {changed_orders}")
+
+            return changed_orders
+        except Exception as e:
+            logger.error(f"恢复运行中任务状态失败: {str(e)}")
+            return []
+
     def remove_task_by_order(self, order):
         """基于order删除转存任务
         Args:
