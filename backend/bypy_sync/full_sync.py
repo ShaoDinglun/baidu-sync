@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -63,6 +64,13 @@ class BypyCommandError(BypySyncError):
         self.stderr = stderr
         message = f"bypy 命令失败，退出码={returncode}: {' '.join(command)}"
         super().__init__(message)
+
+
+class ArchiveValidationError(BypySyncError):
+    def __init__(self, file_path: Path, detail: str):
+        self.file_path = file_path
+        self.detail = detail
+        super().__init__(f"压缩包校验失败: {file_path} | {detail}")
 
 
 def ensure_default_config(config_path: Path) -> Path:
@@ -161,6 +169,78 @@ class BypyRunner:
         self.state_callback = state_callback
         self.rate_limiter = RateLimiter(settings.min_command_interval_seconds)
         self._current_process: Optional[subprocess.Popen[str]] = None
+
+    @staticmethod
+    def _is_supported_archive(file_path: Path) -> bool:
+        suffixes = [suffix.lower() for suffix in file_path.suffixes]
+        if not suffixes:
+            return False
+        archive_suffixes = {".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz"}
+        return any(suffix in archive_suffixes for suffix in suffixes)
+
+    @staticmethod
+    def _validate_archive(file_path: Path) -> Optional[str]:
+        suffixes = [suffix.lower() for suffix in file_path.suffixes]
+        if ".zip" in suffixes:
+            try:
+                with zipfile.ZipFile(file_path) as archive:
+                    members = archive.infolist()
+                    if not members:
+                        return "zipfile is empty"
+                    bad_member = archive.testzip()
+                    if bad_member:
+                        return f"crc error in {bad_member}"
+            except Exception as exc:
+                return str(exc)
+            return None
+        return None
+
+    @staticmethod
+    def _iter_archive_files(root_dir: Path) -> List[Path]:
+        return sorted(path for path in root_dir.rglob("*") if path.is_file() and BypyRunner._is_supported_archive(path))
+
+    def _replace_invalid_archive(self, remote_file: str, local_file: Path, detail: str) -> None:
+        attempts = max(1, int(self.settings.retry_times))
+        current_detail = detail
+
+        for attempt in range(1, attempts + 1):
+            backup_path = local_file.with_name(f"{local_file.name}.bad.{datetime.now().strftime('%Y%m%d%H%M%S')}")
+            if local_file.exists():
+                shutil.move(local_file, backup_path)
+
+            self.logger.warning(
+                "压缩包校验失败，准备重拉 (%s/%s): %s | %s",
+                attempt,
+                attempts,
+                local_file,
+                current_detail,
+            )
+            self.run(["downfile", remote_file, str(local_file)])
+
+            validation_detail = self._validate_archive(local_file)
+            if validation_detail is None:
+                if backup_path.exists():
+                    backup_path.unlink()
+                self.logger.info("压缩包复验通过: %s", local_file)
+                return
+
+            current_detail = validation_detail
+
+        raise ArchiveValidationError(local_file, current_detail)
+
+    def _validate_downloaded_file(self, remote_file: str, local_file: Path) -> None:
+        if not self._is_supported_archive(local_file):
+            return
+        detail = self._validate_archive(local_file)
+        if detail is None:
+            return
+        self._replace_invalid_archive(remote_file, local_file, detail)
+
+    def _validate_downloaded_tree(self, remote_dir: str, local_dir: Path) -> None:
+        for local_file in self._iter_archive_files(local_dir):
+            relative_path = local_file.relative_to(local_dir).as_posix()
+            remote_file = join_remote_path(remote_dir, relative_path)
+            self._validate_downloaded_file(remote_file, local_file)
 
     def _check_stop_requested(self) -> None:
         if self.stop_event and self.stop_event.is_set():
@@ -356,10 +436,12 @@ class BypyRunner:
     def sync_dir(self, remote_dir: str, local_dir: Path) -> None:
         local_dir.parent.mkdir(parents=True, exist_ok=True)
         self.run(["syncdown", remote_dir, str(local_dir), "False"])
+        self._validate_downloaded_tree(remote_dir, local_dir)
 
     def download_file(self, remote_file: str, local_file: Path) -> None:
         local_file.parent.mkdir(parents=True, exist_ok=True)
         self.run(["downfile", remote_file, str(local_file)])
+        self._validate_downloaded_file(remote_file, local_file)
 
 
 def normalize_remote_path(path: str) -> str:
