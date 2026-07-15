@@ -13,6 +13,8 @@ Environment=TZ=Asia/Shanghai
 Environment=WEB_APP_HOST=0.0.0.0
 Environment=WEB_APP_PORT=3001
 ExecStart=/home/leon/baidu-autosave/.venv/bin/python -m backend.web_app
+ExecStartPost=-/home/leon/baidu-autosave/.venv/bin/python /home/leon/baidu-autosave/scripts/service_lifecycle_notify.py start
+ExecStopPost=-/home/leon/baidu-autosave/.venv/bin/python /home/leon/baidu-autosave/scripts/service_lifecycle_notify.py failure ${SERVICE_RESULT} ${EXIT_CODE} ${EXIT_STATUS}
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

@@ -438,6 +438,41 @@ tail -f "$(ls -t log/bypy_sync/bypy_incremental_sync_*.log | head -n 1)"
 - 为了稳定性，默认倾向单进程串行执行，而不是追求吞吐。
 - 如果从中台触发，停止动作由后端原生任务控制；如果从命令行前台触发，直接 `Ctrl+C` 即可。
 
+## systemd 服务生命周期通知
+
+宿主机通过 systemd 运行服务时，可使用 `deploy/baidu-autosave-user.service`（用户服务）或
+`deploy/baidu-autosave.service`（系统服务）启用生命周期通知。通知复用 `config/config.json`
+中已经启用的飞书/Webhook 配置，不需要在 unit 文件中重复填写 Webhook 或密钥。
+
+通知规则：
+
+- 服务因信号、非零退出码、超时、OOM 等异常停止时，发送“百度网盘服务异常”；
+- 服务正常启动或人工重启后，发送“百度网盘服务已启动”；
+- 异常停止后由 systemd 自动拉起时，发送“百度网盘服务已恢复”，并包含前一次异常原因；
+- 正常停止不会发送异常通知；任务没有新增文件时仍遵循原有静默规则。
+
+用户服务安装示例：
+
+```bash
+install -m 0644 deploy/baidu-autosave-user.service ~/.config/systemd/user/baidu-autosave.service
+systemctl --user daemon-reload
+systemctl --user enable --now baidu-autosave.service
+```
+
+生命周期脚本也可单独调用：
+
+```bash
+# 发送启动或恢复通知
+.venv/bin/python scripts/service_lifecycle_notify.py start
+
+# 模拟 systemd 传入异常退出信息
+.venv/bin/python scripts/service_lifecycle_notify.py failure signal killed 9
+```
+
+脚本输入为动作及 systemd 的 `SERVICE_RESULT`、`EXIT_CODE`、`EXIT_STATUS`；成功发送返回退出码 0，
+通知未配置或发送失败返回退出码 1。异常状态默认保存在 `log/service_lifecycle_failure.json`，也可通过
+`SERVICE_NOTIFY_STATE_FILE` 修改路径。通知失败时会保留异常状态，供下一次启动重试恢复通知。
+
 ## Docker 部署
 
 ### 使用 docker-compose 部署（推荐）
