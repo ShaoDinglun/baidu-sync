@@ -50,7 +50,7 @@ const createProxyConfig = (withBypass = false): ProxyOptions => ({
 
 const getElementChunkName = (id: string) => {
   if (id.includes('/node_modules/@element-plus/icons-vue/')) {
-    return 'element-icons'
+    return 'vendor-misc'
   }
 
   if (!id.includes('/node_modules/element-plus/')) {
@@ -58,22 +58,22 @@ const getElementChunkName = (id: string) => {
   }
 
   if (/(form|input|input-number|select|option|checkbox|radio|switch|cascader|upload|autocomplete)/.test(id)) {
-    return 'element-form'
+    return 'vendor-misc'
   }
 
   if (/(table|tag|card|descriptions|empty|skeleton|image|badge|avatar|progress|result)/.test(id)) {
-    return 'element-data'
+    return 'vendor-misc'
   }
 
   if (/(dialog|drawer|message|message-box|notification|loading|popover|tooltip|tour|overlay)/.test(id)) {
-    return 'element-feedback'
+    return 'vendor-misc'
   }
 
   if (/(menu|tabs|breadcrumb|dropdown|pagination|steps|segmented)/.test(id)) {
-    return 'element-navigation'
+    return 'vendor-misc'
   }
 
-  return 'element-base'
+  return 'vendor-misc'
 }
 
 export default defineConfig({

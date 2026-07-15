@@ -8,6 +8,7 @@
     "build:prod": "npx vite build",
     "preview": "vite preview",
     "screenshots": "node ./scripts/capture-screenshots.mjs",
+    "test:login-smoke": "node ./tests/login-page.smoke.mjs",
     "version:patch": "npm version patch --no-git-tag-version && git add package.json && git commit -m \"chore: bump version to $(jq -r '.version' package.json)\" && git tag \"v$(jq -r '.version' package.json)\" && git push && git push --tags",
     "version:minor": "npm version minor --no-git-tag-version && git add package.json && git commit -m \"chore: bump version to $(jq -r '.version' package.json)\" && git tag \"v$(jq -r '.version' package.json)\" && git push && git push --tags",
     "version:major": "npm version major --no-git-tag-version && git add package.json && git commit -m \"chore: bump version to $(jq -r '.version' package.json)\" && git tag \"v$(jq -r '.version' package.json)\" && git push && git push --tags",
