@@ -1,0 +1,20 @@
+[Unit]
+Description=Baidu Autosave Web and Scheduler Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/leon/baidu-autosave
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=Asia/Shanghai
+Environment=WEB_APP_HOST=0.0.0.0
+Environment=WEB_APP_PORT=3001
+ExecStart=/home/leon/baidu-autosave/.venv/bin/python -m backend.web_app
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target

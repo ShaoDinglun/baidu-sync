@@ -1536,6 +1536,11 @@ def get_server_port():
         return 5000
 
 
+def get_server_host():
+    """从环境变量读取监听地址，默认保持对外监听的兼容行为。"""
+    return os.environ.get('WEB_APP_HOST', '0.0.0.0')
+
+
 # 登录装饰器
 def login_required(f):
     @wraps(f)
@@ -3988,11 +3993,12 @@ if __name__ == '__main__':
         signal.signal(signal.SIGTERM, signal_handler)
         
         # 启动HTTP服务器
+        server_host = get_server_host()
         server_port = get_server_port()
-        logger.info(f"使用标准WSGI服务器，监听端口: {server_port}")
-        http_server = WSGIServer(('0.0.0.0', server_port), app, log=None)  # 禁用访问日志
+        logger.info(f"使用标准WSGI服务器，监听地址: {server_host}:{server_port}")
+        http_server = WSGIServer((server_host, server_port), app, log=None)  # 禁用访问日志
 
-        print(f'Server started at http://0.0.0.0:{server_port}')
+        print(f'Server started at http://{server_host}:{server_port}')
         http_server.serve_forever()
     except KeyboardInterrupt:
         logger.info("接收到 Ctrl+C，正在退出...")
@@ -4002,4 +4008,4 @@ if __name__ == '__main__':
         try:
             signal_handler(signal.SIGTERM, None)
         except:
-            sys.exit(1) 
+            sys.exit(1)

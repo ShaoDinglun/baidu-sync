@@ -1,0 +1,18 @@
+[Unit]
+Description=Baidu Autosave Frontend Service
+After=network-online.target baidu-autosave.service
+Wants=network-online.target
+Requires=baidu-autosave.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/leon/baidu-autosave/frontend
+Environment=VITE_BACKEND_TARGET=http://127.0.0.1:5000
+ExecStart=/usr/bin/npm run dev
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target
