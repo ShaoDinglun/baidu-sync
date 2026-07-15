@@ -109,6 +109,10 @@ cd baidu-sync
 pip install -r requirements.txt
 ```
 
+本地同步功能使用 `bypy` 命令访问百度网盘。首次部署时，请在运行服务的同一用户下执行 `.venv/bin/bypy info` 并按提示完成授权。
+
+迁移已有实例时，还需要同步该用户的 `~/.bypy` 授权目录。该目录包含敏感凭据，目录权限应保持为 `700`，其中 `bypy.json` 应保持为 `600`，禁止提交到 Git。
+
 3. 运行应用：
 ```bash
 python -m backend.web_app
