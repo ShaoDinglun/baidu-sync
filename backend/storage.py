@@ -29,13 +29,46 @@ def _format_transfer_error(error_str):
         return "转存错误"
     return error_str
 
+
+def _interruptible_sleep(delay_seconds, cancel_callback=None):
+    """等待重试间隔，并允许调度器在服务停止时及时取消任务。"""
+    end_time = time.time() + max(0.0, delay_seconds)
+    while time.time() < end_time:
+        if cancel_callback and cancel_callback():
+            raise InterruptedError('任务已取消')
+        time.sleep(min(0.2, end_time - time.time()))
+
+
+def _resolve_retry_policy(instance, default_max_retries, default_delay_range):
+    """读取实例中的重试配置；配置无效时回退到装饰器默认值。"""
+    instance_config = getattr(instance, 'config', {}) if instance is not None else {}
+    retry_config = instance_config.get('retry', {}) if isinstance(instance_config, dict) else {}
+    if not isinstance(retry_config, dict):
+        retry_config = {}
+
+    try:
+        max_retries = max(0, int(retry_config['max_attempts']))
+    except (KeyError, TypeError, ValueError):
+        max_retries = max(0, int(default_max_retries))
+
+    try:
+        configured_delay = max(0.0, float(retry_config['delay_seconds']))
+    except (KeyError, TypeError, ValueError):
+        configured_delay = None
+
+    return max_retries, configured_delay, default_delay_range
+
+
 def api_retry(max_retries=1, delay_range=(2, 3), exclude_errors=None):
     """
     API重试装饰器
     Args:
-        max_retries: 最大重试次数（默认1次，即总共执行2次）
-        delay_range: 重试延迟范围（秒），默认2-3秒
+        max_retries: 未配置 retry.max_attempts 时的最大重试次数
+        delay_range: 未配置 retry.delay_seconds 时的重试延迟范围（秒）
         exclude_errors: 不需要重试的错误码列表
+
+    实例包含 config.retry 时，优先使用其中的 max_attempts（最大重试次数）和
+    delay_seconds（每次重试间隔），确保设置页配置真实作用于百度 API 调用。
     """
     if exclude_errors is None:
         exclude_errors = [-6, 115, 145, 200025, -9]  # 身份验证失败、分享链接失效、提取码错误、文件不存在
@@ -45,12 +78,18 @@ def api_retry(max_retries=1, delay_range=(2, 3), exclude_errors=None):
         def wrapper(*args, **kwargs):
             last_exception = None
             cancel_callback = kwargs.get('cancel_callback')
+            instance = args[0] if args else None
+            retry_limit, configured_delay, fallback_delay_range = _resolve_retry_policy(
+                instance,
+                max_retries,
+                delay_range,
+            )
 
             def raise_if_cancelled():
                 if cancel_callback and cancel_callback():
                     raise InterruptedError('任务已取消')
 
-            for attempt in range(max_retries + 1):  # +1 因为包含原始请求
+            for attempt in range(retry_limit + 1):
                 try:
                     raise_if_cancelled()
                     return func(*args, **kwargs)
@@ -69,24 +108,28 @@ def api_retry(max_retries=1, delay_range=(2, 3), exclude_errors=None):
                             break
 
                     # 如果是最后一次尝试或者是不需要重试的错误，直接抛出异常
-                    if attempt == max_retries or should_skip_retry:
+                    if attempt == retry_limit or should_skip_retry:
                         if should_skip_retry:
                             logger.debug(f"API调用失败，错误不需要重试: {error_str}")
-                        raise e
+                        raise
 
                     # 记录重试信息
-                    delay = random.uniform(delay_range[0], delay_range[1])
-                    logger.warning(f"API调用失败，{delay:.1f}秒后进行第{attempt + 1}次重试: {error_str}")
-                    end_time = time.time() + delay
-                    while time.time() < end_time:
-                        raise_if_cancelled()
-                        time.sleep(min(0.2, end_time - time.time()))
+                    if configured_delay is None:
+                        delay = random.uniform(fallback_delay_range[0], fallback_delay_range[1])
+                    else:
+                        delay = configured_delay
+                    logger.warning(
+                        f"API调用失败，{delay:.1f}秒后进行第{attempt + 1}次重试"
+                        f"（最多重试{retry_limit}次）: {error_str}"
+                    )
+                    _interruptible_sleep(delay, cancel_callback)
 
             # 如果所有重试都失败了，抛出最后一个异常
             raise last_exception
 
         return wrapper
     return decorator
+
 
 class BaiduStorage:
     def __init__(self):
@@ -1952,11 +1995,15 @@ class BaiduStorage:
                     logger.info(f"使用密码 {pwd} 访问分享链接")
                 if progress_callback:
                         progress_callback('info', f'使用密码访问分享链接')
-                self._access_shared_with_retry(share_url, pwd, client=temp_client, cancel_callback=cancel_callback)
-
-                # 步骤1.1：获取分享文件列表并记录
+                # 步骤1.1：获取分享文件列表并记录。每次重试都重新验证分享会话，
+                # 避免只重试页面解析时继续复用已经失效的分享 Cookie。
                 logger.info("获取分享文件列表...")
-                shared_paths = self._shared_paths_with_retry(shared_url=share_url, client=temp_client, cancel_callback=cancel_callback)
+                shared_paths = self._access_and_get_shared_paths_with_retry(
+                    share_url,
+                    pwd,
+                    client=temp_client,
+                    cancel_callback=cancel_callback,
+                )
                 if not shared_paths:
                     logger.error("获取分享文件列表失败")
                     if progress_callback:
@@ -2778,13 +2825,10 @@ class BaiduStorage:
         try:
             logger.info(f"正在获取分享链接信息: {share_url}")
             
-            # 访问分享链接
+            # 访问分享链接并获取列表；重试时会重新验证分享会话。
             if pwd:
                 logger.info(f"使用密码访问分享链接")
-            self._access_shared_with_retry(share_url, pwd)
-
-            # 获取分享文件列表
-            shared_paths = self._shared_paths_with_retry(shared_url=share_url)
+            shared_paths = self._access_and_get_shared_paths_with_retry(share_url, pwd)
             if not shared_paths:
                 return {'success': False, 'error': '获取分享文件列表失败'}
             
@@ -2842,6 +2886,14 @@ class BaiduStorage:
         return client.access_shared(share_url, pwd, show_vcode=False)
 
     @api_retry(max_retries=1, delay_range=(2, 3))
+    def _access_and_get_shared_paths_with_retry(self, shared_url, pwd=None, client=None, cancel_callback=None):
+        """验证分享会话并获取根目录；每次重试都重新执行完整的访问流程。"""
+        if client is None:
+            client = self.client
+        client.access_shared(shared_url, pwd, show_vcode=False)
+        return client.shared_paths(shared_url=shared_url)
+
+    @api_retry(max_retries=1, delay_range=(2, 3))
     def _shared_paths_with_retry(self, shared_url, client=None, cancel_callback=None):
         """带重试功能的获取分享文件列表方法"""
         if client is None:
@@ -2869,13 +2921,9 @@ class BaiduStorage:
             if pwd:
                 logger.info(f"使用密码 {pwd} 访问分享链接")
                 
-            logger.debug("开始访问分享链接...")
-            self._access_shared_with_retry(share_url, pwd)
-            logger.debug("分享链接访问成功")
-
-            logger.debug("开始获取文件列表...")
-            # 获取根目录文件列表
-            files = self._shared_paths_with_retry(shared_url=share_url)
+            logger.debug("开始访问分享链接并获取文件列表...")
+            files = self._access_and_get_shared_paths_with_retry(share_url, pwd)
+            logger.debug("分享链接访问及文件列表获取成功")
             
             # 用于存储所有文件
             all_files = []

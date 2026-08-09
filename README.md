@@ -703,7 +703,7 @@ baidu-sync/
         "tasks": []          // 任务列表
     },
     "retry": {
-        "max_attempts": 3,    // 最大重试次数
+        "max_attempts": 3,    // 最大重试次数（不含首次请求）
         "delay_seconds": 5    // 重试间隔
     },
     "cron": {
@@ -756,6 +756,7 @@ baidu-sync/
    - 检查分享链接是否有效
    - 确认账号登录状态
    - 查看错误日志了解详细原因
+   - 出现 `BaiduPCS.shared_paths: Don't get shared info` 时，表示百度分享页暂时未返回可解析的文件信息；程序会按重试配置重新验证提取码和分享会话，再重新获取目录
 
 2. **定时任务不执行**
    - 确认定时规则格式正确
