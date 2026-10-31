@@ -30,6 +30,7 @@ from uuid import uuid4
 from gevent.pywsgi import WSGIServer
 from backend.bypy_sync.full_sync import ensure_default_config, run_full_sync
 from backend.bypy_sync.incremental_sync import run_incremental_sync
+from backend.local_sync_followup import LocalSyncFollowup
 
 # GitHub 仓库信息
 GITHUB_REPO = 'ShaoDinglun/baidu-sync'
@@ -48,6 +49,7 @@ INCREMENTAL_SYNC_STATE_FILE = os.path.join(BYPY_SYNC_LOG_DIR, 'bypy_incremental_
 INCREMENTAL_SYNC_SUMMARY_FILE = os.path.join(BYPY_SYNC_LOG_DIR, 'bypy_incremental_last_run.txt')
 FULL_SYNC_MANAGER_PID_FILE = os.path.join(BYPY_SYNC_LOG_DIR, 'manager.pid')
 FULL_SYNC_STATE_FILE = os.path.join(BYPY_SYNC_LOG_DIR, 'current_state.json')
+LOCAL_SYNC_FOLLOWUP_STATE_FILE = os.path.join(BYPY_SYNC_LOG_DIR, 'cloud_local_followup.json')
 
 # 创建日志目录
 os.makedirs(os.path.join(ROOT_DIR, 'log'), exist_ok=True)
@@ -1067,6 +1069,13 @@ def _save_bypy_sync_tasks(tasks):
 
 class LocalSyncTaskScheduler:
     def __init__(self):
+        self.followup = LocalSyncFollowup(
+            LOCAL_SYNC_FOLLOWUP_STATE_FILE,
+            load_tasks=lambda: _load_bypy_sync_tasks(include_disabled=True),
+            run_task=lambda task_id: _run_local_sync_task(
+                task_id=task_id, dry_run=False, include_disabled=False,
+                background=False, trigger_source='upstream_success'),
+        )
         self.timezone = pytz.timezone('Asia/Shanghai')
         self.scheduler = BackgroundScheduler(
             timezone=self.timezone,
@@ -1087,6 +1096,30 @@ class LocalSyncTaskScheduler:
             self.scheduler.start()
             self.started = True
         self.sync_jobs()
+        # 沿用本调度器单线程执行器；跨午夜及重启均检查未完成接续。
+        self.scheduler.add_job(
+            self._drain_followups, trigger='interval', seconds=60,
+            id='local_sync_followup_recovery', replace_existing=True,
+            next_run_time=datetime.now(self.timezone),
+        )
+
+    def request_followup(self, event):
+        """接收云端完成事件dict，返回本地任务ID列表；只入队，不执行网络请求。
+
+        输入须包含task_uid/save_dir/status/Unix时间last_execute_time；坏或重复
+        事件返回[]。状态I/O错误交给调用方明确记录，周期对账恢复。
+        示例：local_sync_scheduler.request_followup(completed_event)。
+        """
+        return self.followup.request(event)
+
+    def _drain_followups(self):
+        try:
+            tasks = storage.list_tasks() if storage else []
+            result = self.followup.run_pending(tasks)
+            if result['completed'] or result['retry_pending'] or result['cancelled']:
+                logger.info(f"本地接续对账: {result}")
+        except Exception as followup_error:
+            logger.error(f"本地接续对账失败，保留待办: {type(followup_error).__name__}")
 
     def stop(self):
         if self.started:
@@ -1579,26 +1612,28 @@ def init_app():
         except Exception as e:
             logger.error(f"启动时恢复遗留运行中任务状态失败: {str(e)}")
         
+        try:
+            logger.info("正在初始化本地同步调度器...")
+            local_sync_scheduler = LocalSyncTaskScheduler()
+            _set_local_sync_in_process_running(False)
+            local_sync_scheduler.start()
+            logger.info("本地同步调度器初始化成功")
+        except Exception as e:
+            logger.error(f"初始化本地同步调度器失败: {str(e)}")
+            local_sync_scheduler = None
+
         # 使用已创建的 storage 实例初始化调度器
         try:
             logger.info("正在初始化调度器...")
             scheduler = TaskScheduler(storage)
+            if local_sync_scheduler:
+                scheduler.on_task_completed = local_sync_scheduler.request_followup
             scheduler.start()
             logger.info("调度器初始化成功")
         except Exception as e:
             logger.error(f"初始化调度器失败: {str(e)}")
             scheduler = None
 
-        try:
-            logger.info("正在初始化本地同步调度器...")
-            local_sync_scheduler = LocalSyncTaskScheduler()
-            local_sync_scheduler.start()
-            _set_local_sync_in_process_running(False)
-            logger.info("本地同步调度器初始化成功")
-        except Exception as e:
-            logger.error(f"初始化本地同步调度器失败: {str(e)}")
-            local_sync_scheduler = None
-        
         if not storage.is_valid():
             logger.warning("存储初始化成功，但未登录或未配置用户")
             

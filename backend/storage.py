@@ -23,6 +23,51 @@ CONFIG_DIR = PROJECT_ROOT / 'config'
 APP_CONFIG_PATH = CONFIG_DIR / 'config.json'
 APP_CONFIG_TEMPLATE_PATH = CONFIG_DIR / 'config.template.json'
 
+
+def _extract_shared_page_data(html):
+    """从百度分享页中提取 JSON 数据，兼容新旧页面结构。"""
+    patterns = (
+        re.compile(r'(?:yunData\.setData|locals\.mset)\((.+?)\);', re.S),
+        re.compile(
+            r'<script\b[^>]*\bclass=["\'][^"\']*\blocals-data\b[^"\']*["\'][^>]*>'
+            r'\s*(\{.*?\})\s*</script>',
+            re.S | re.I,
+        ),
+    )
+    for pattern in patterns:
+        match = pattern.search(html or '')
+        if match:
+            return json.loads(match.group(1))
+    raise AssertionError("`BaiduPCS.shared_paths`: Don't get shared info")
+
+
+def _patch_baidupcs_shared_paths():
+    """兼容百度分享页改版：分享数据改为嵌入 locals-data JSON。"""
+    try:
+        from baidupcs_py.baidupcs.pcs import BaiduPCS, Method
+    except Exception as e:
+        logger.warning(f"跳过 BaiduPCS shared_paths 兼容补丁: {e}")
+        return
+
+    original_shared_paths = BaiduPCS.shared_paths
+    if getattr(original_shared_paths, '_shared_page_compat_patch', False):
+        return
+
+    @wraps(original_shared_paths)
+    def shared_paths(self, shared_url):
+        assert self._stoken, "`STOKEN` is not in `cookies`"
+        resp = self._request(Method.Get, shared_url, params=None)
+        self._cookies_update(resp.cookies.get_dict())
+        return _extract_shared_page_data(resp.text)
+
+    shared_paths._shared_page_compat_patch = True
+    BaiduPCS.shared_paths = shared_paths
+    logger.info("已启用 BaiduPCS shared_paths 分享页兼容补丁")
+
+
+_patch_baidupcs_shared_paths()
+
+
 def _format_transfer_error(error_str):
     """格式化转存错误信息，将百度API返回的模糊错误信息转换为更清晰的提示"""
     if "error_code: 4" in error_str or "存储好像出问题了" in error_str:

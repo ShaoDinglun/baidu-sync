@@ -28,6 +28,7 @@ class TaskScheduler:
         self._running_task_orders = set()
         self._shutdown_requested = False
         self.storage = storage or BaiduStorage()
+        self.on_task_completed = None  # 可选接续钩子，不改变原调用方
         self.scheduler = None
         self.is_running = False
         
@@ -630,9 +631,7 @@ class TaskScheduler:
             self._mark_task_running(task_order)
             self.storage.update_task_status_by_order(task_order, 'running', '定时任务执行中')
             logger.info(f"开始执行任务: {task_name}")
-            logger.info(f"分享链接: {current_task.get('url', '')}")
             logger.info(f"保存目录: {current_task.get('save_dir', '')}")
-            logger.info(f"提取码: {current_task.get('pwd', '')}")
             logger.info("")
             
             # 确保存储实例可用
@@ -710,6 +709,16 @@ class TaskScheduler:
                     current_task['error'] = result.get('error')
                     results['failed'].append(current_task)
                 
+                # 先持久化接续意图，再交给既有本地同步执行器；不传认证字段。
+                if result.get('success') and callable(self.on_task_completed):
+                    event = {key: current_task.get(key) for key in
+                             ('task_uid', 'save_dir', 'status', 'last_execute_time')}
+                    try:
+                        self.on_task_completed(event)
+                    except Exception as followup_error:
+                        # 云端完成状态保持，周期任务会从已保存状态重新对账。
+                        logger.error(f"本地接续请求未持久化: {type(followup_error).__name__}")
+
                 # 将结果添加到通知缓冲区，而不是立即发送通知
                 if results['success'] or results['failed']:
                     self._add_to_notification_buffer(results)
