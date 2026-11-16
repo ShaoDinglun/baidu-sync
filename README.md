@@ -756,7 +756,8 @@ baidu-sync/
    - 检查分享链接是否有效
    - 确认账号登录状态
    - 查看错误日志了解详细原因
-   - 出现 `BaiduPCS.shared_paths: Don't get shared info` 时，表示百度分享页暂时未返回可解析的文件信息；程序会按重试配置重新验证提取码和分享会话，再重新获取目录
+   - 分享页解析兼容旧版 `yunData.setData`、`locals.mset`，以及使用 `class="locals-data"` 或 `id="locals-data"` 的 JSON 数据标签。
+   - 出现 `BaiduPCS.shared_paths: Don't get shared info` 时，表示百度分享页未返回当前解析器能识别的文件信息，可能是临时异常或页面结构变化；程序会按重试配置重新验证提取码和分享会话，再重新获取目录。
 
 2. **定时任务不执行**
    - 确认定时规则格式正确

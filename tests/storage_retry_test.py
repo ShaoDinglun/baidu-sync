@@ -45,6 +45,25 @@ class SharedPageParserTest(unittest.TestCase):
         ):
             _extract_shared_page_data('<html><body>验证码</body></html>')
 
+    def test_parses_locals_data_id_without_class(self):
+        html = '<script id="locals-data" type="application/json">{"uk": 7, "file_list": []}</script>'
+        self.assertEqual(_extract_shared_page_data(html), {"uk": 7, "file_list": []})
+
+    def test_parses_locals_data_id_with_other_attribute_order(self):
+        html = "<SCRIPT type='application/json'\n id='locals-data'>\n{\"uk\": 8}\n</SCRIPT>"
+        self.assertEqual(_extract_shared_page_data(html), {"uk": 8})
+
+    def test_rejects_unrelated_data_attributes_and_partial_names(self):
+        for attribute in ('data-id="locals-data"', 'id="locals-data-other"',
+                          'data-class="locals-data"', 'class="other-locals-data"'):
+            with self.subTest(attribute=attribute), self.assertRaises(AssertionError):
+                _extract_shared_page_data(f'<script {attribute}>{{"uk": 9}}</script>')
+
+    def test_invalid_json_is_not_treated_as_empty_data(self):
+        import json
+        with self.assertRaises(json.JSONDecodeError):
+            _extract_shared_page_data('<script id="locals-data">{invalid}</script>')
+
     def test_patch_is_applied_to_baidupcs_shared_paths(self):
         class Cookies:
             def get_dict(self):

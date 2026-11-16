@@ -29,7 +29,8 @@ def _extract_shared_page_data(html):
     patterns = (
         re.compile(r'(?:yunData\.setData|locals\.mset)\((.+?)\);', re.S),
         re.compile(
-            r'<script\b[^>]*\bclass=["\'][^"\']*\blocals-data\b[^"\']*["\'][^>]*>'
+            r'<script\b[^>]*\s(?:id=["\']locals-data["\']|'
+            r'class=["\'](?:[^"\']*\s)?locals-data(?:\s[^"\']*)?["\'])[^>]*>'
             r'\s*(\{.*?\})\s*</script>',
             re.S | re.I,
         ),
