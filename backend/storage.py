@@ -2310,17 +2310,11 @@ class BaiduStorage:
                         if progress_callback:
                             progress_callback('warning', '未识别到可用的日期目录格式，本次回退为全量范围处理')
                 
-                # 步骤2：扫描本地目录中的文件
-                logger.info(f"【步骤2/4】扫描本地目录: {save_dir}")
+                # 只核对本轮实际目标目录，不让无关历史目录异常影响当前月份。
+                logger.info(f"【步骤2/4】按目标目录核对已有文件: {save_dir}")
                 if progress_callback:
-                    progress_callback('info', f'【步骤2/4】扫描本地目录: {save_dir}')
-                
-                # 获取本地文件列表
-                local_files = []
-                if save_dir:
-                    local_files = self.list_local_files(save_dir, client=temp_client, cancel_callback=cancel_callback)
-                    if progress_callback:
-                        progress_callback('info', f'本地目录中有 {len(local_files)} 个文件')
+                    progress_callback('info', f'【步骤2/4】按目标目录核对已有文件: {save_dir}')
+                target_directory_cache = {}
                 
                 # 步骤3：准备转存（对比文件、准备目录）
                 target_dir = save_dir
@@ -2380,13 +2374,10 @@ class BaiduStorage:
                             continue
                     
                     # 🔄 改进的去重检查逻辑
-                    clean_normalized = self._normalize_path(clean_path, file_only=True)
-                    final_normalized = self._normalize_path(final_path, file_only=True)
-                    
-                    # 检查原文件是否存在
-                    original_exists = clean_normalized in local_files
-                    # 检查重命名后文件是否存在  
-                    final_exists = final_normalized in local_files
+                    original_exists = self._target_file_exists(
+                        posixpath.join(target_dir, clean_path), target_directory_cache, client=temp_client)
+                    final_exists = self._target_file_exists(
+                        posixpath.join(target_dir, final_path), target_directory_cache, client=temp_client)
                     overwrite_existing = use_new_sync_logic and self._should_overwrite_subscription_path(normalized_task_config, path_in_scope)
                     
                     if final_path != clean_path:  # 需要重命名
@@ -2397,7 +2388,7 @@ class BaiduStorage:
                                 progress_callback('info', f'文件需重命名: {clean_path} -> {final_path}')
                             # 添加到重命名列表（不转存）
                             rename_only_list.append({
-                                'dir_path': target_dir,
+                                'dir_path': posixpath.dirname(posixpath.join(target_dir, clean_path)),
                                 'clean_path': clean_path,
                                 'final_path': final_path,
                             })
@@ -2580,6 +2571,9 @@ class BaiduStorage:
                         entry_name = self._normalize_path(entry_path, file_only=True)
                         if entry_name:
                             existing_name_to_path[entry_name] = entry_path
+
+                    # 核对后若有其他任务写入同名文件，停止本批并重新核对，不重复转存。
+                    self._assert_transfer_targets_available(items, existing_name_to_path)
 
                     overwrite_paths = []
                     for item in items:
@@ -3070,6 +3064,33 @@ class BaiduStorage:
             logger.error(f"检查存储状态失败: {str(e)}")
             return False
             
+    def _target_file_exists(self, path, directory_cache, client=None):
+        """按完整目标路径去重；仅确认目录不存在时视为空，接口异常向上传递。"""
+        path = self._normalize_path(path)
+        directory = posixpath.dirname(path)
+        if directory not in directory_cache:
+            try:
+                entries = self._list_dir_entries_with_fallback(directory, client=client)
+            except Exception as error:
+                if not self._is_missing_path_error(error):
+                    raise
+                entries = []
+            directory_cache[directory] = {
+                self._normalize_path(self._get_list_entry_path(entry))
+                for entry in entries if self._is_list_entry_file(entry)
+            }
+        return path in directory_cache[directory]
+
+    def _assert_transfer_targets_available(self, items, existing_names):
+        """保留显式覆盖策略；不覆盖任务遇到新出现的同名目标时要求重新核对。"""
+        for item in items:
+            if item.get('overwrite_existing'):
+                continue
+            for key in ('clean_path', 'final_path'):
+                name = posixpath.basename(item[key])
+                if name in existing_names:
+                    raise RuntimeError(f'目标文件在核对后已存在，请重新同步：{name}')
+
     def list_local_files(self, dir_path, client=None, cancel_callback=None):
         """获取本地目录中的所有文件列表
         Args:
@@ -3098,9 +3119,6 @@ class BaiduStorage:
                             return None
                         raise
 
-                    if allow_missing and not self._confirm_dir_exists(path, client=client, check_error=list_error):
-                        return None
-
                     raise
 
             # 检查目录是否存在，并在可确认存在时继续执行后续扫描
@@ -3111,7 +3129,7 @@ class BaiduStorage:
                     return []
             except Exception as e:
                 logger.error(f"检查目录 {dir_path} 时出错: {str(e)}")
-                return []
+                raise
 
             def _list_dir(path, prefetched_content=None):
                 try:
@@ -3157,7 +3175,7 @@ class BaiduStorage:
 
         except Exception as e:
             logger.error(f"获取本地文件列表失败: {str(e)}")
-            return []
+            raise
             
     def _extract_file_info(self, file_dict):
         """从文件字典中提取文件信息
